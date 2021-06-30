@@ -1,8 +1,10 @@
 {
-  "name": "carbone",
+  "name": "@enfexia/carbone",
   "description": "Fast, Simple and Powerful report generator. Injects JSON and produces PDF, DOCX, XLSX, ODT, PPTX, ODS, ...!",
-  "version": "3.2.3",
-  "bin": "bin/carbone",
+  "version": "3.2.4",
+  "bin": {
+    "carbone": "bin/carbone"
+  },
   "main": "./lib",
   "author": "David Grelaud",
   "license": "Apache-2.0",
@@ -20,20 +22,19 @@
   "scripts": {
     "test": "node ./node_modules/mocha/bin/mocha test --timeout 100000 --exit",
     "lint": "eslint ./lib/**.js ./test/**.js ./formatters/**.js",
-    "lint:fix": "eslint ./lib/**.js ./test/**.js ./formatters/**.js --fix",
-    "postpublish": "PACKAGE_VERSION=$(cat package.json | grep \\\"version\\\" | head -1 | awk -F: '{ print $2 }' | sed 's/[\",]//g' | tr -d '[[:space:]]') && git tag $PACKAGE_VERSION && git push origin $PACKAGE_VERSION && git push github-origin $PACKAGE_VERSION"
+    "lint:fix": "eslint ./lib/**.js ./test/**.js ./formatters/**.js --fix"
   },
   "dependencies": {
     "dayjs": "=1.10.4",
     "debug": "=4.1.1",
+    "image-size": "^0.9.3",
+    "qrcode": "^1.4.4",
     "timsort": "=0.3.0",
     "which": "=2.0.2",
-    "yauzl": "=2.10.0",
-    "yazl": "=2.5.1",
-    "xml2js": "^0.4.23",
+    "xml2js": "file:node-xml2js",
     "xml2js-xpath": "^0.11.0",
-    "image-size": "^0.9.3",
-    "qrcode": "^1.4.4"
+    "yauzl": "=2.10.0",
+    "yazl": "=2.5.1"
   },
   "devDependencies": {
     "eslint": "=7.7.0",
@@ -41,5 +42,18 @@
   },
   "engines": {
     "node": ">= 10.15.0"
+  },
+  "directories": {
+    "doc": "doc",
+    "example": "examples",
+    "lib": "lib",
+    "test": "test"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Enfexia/carbone.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Enfexia/carbone/issues"
   }
 }
