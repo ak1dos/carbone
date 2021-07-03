@@ -31,7 +31,7 @@
     "qrcode": "^1.4.4",
     "timsort": "=0.3.0",
     "which": "=2.0.2",
-    "xml2js": "file:node-xml2js",
+    "@enfexia/xml2js": "=0.0.1",
     "xml2js-xpath": "^0.11.0",
     "yauzl": "=2.10.0",
     "yazl": "=2.5.1"
