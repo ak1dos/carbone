@@ -43,4 +43,7 @@ template/*
 coverage/*
 asset/*
 0formation/*
+examples/*
+out/*
+request/*
 

@@ -93,10 +93,10 @@ describe('parser', function () {
       });
     });
     it('It should find multiple markers which are in another marker', function (done) {
-      callFindMarkers('<w:r><w:color /><w:t>{</w:t></w:r><w:r ><w:color w:val="{d.perso[i].color}" /><w:t>d.perso</w:t></w:r><w:r><w:rPr test="{d.perso[i].test}"><w:color /></w:rPr><w:t>[i].nom}</w:t></w:r>', function (err, cleanedXml, markers) {
+      callFindMarkers('<w:r><w:color /><w:t>{</w:t></w:r><w:r ><w:color w:val="{d.perso[i].color}" /><w:t>d.perso</w:t></w:r><w:r><w:rPr cli-test="{d.perso[i].cli-test}"><w:color /></w:rPr><w:t>[i].nom}</w:t></w:r>', function (err, cleanedXml, markers) {
         helper.assert(err, null);
         helper.assert(markers, [{pos : 22, name : '_root.d.perso[i].nom'},{pos : 57, name : '_root.d.perso[i].color'},{pos : 97, name : '_root.d.perso[i].test'}]);
-        helper.assert(cleanedXml, '<w:r><w:color /><w:t>\uFFFF</w:t></w:r><w:r ><w:color w:val="\uFFFF" /><w:t></w:t></w:r><w:r><w:rPr test="\uFFFF"><w:color /></w:rPr><w:t></w:t></w:r>');
+        helper.assert(cleanedXml, '<w:r><w:color /><w:t>\uFFFF</w:t></w:r><w:r ><w:color w:val="\uFFFF" /><w:t></w:t></w:r><w:r><w:rPr cli-test="\uFFFF"><w:color /></w:rPr><w:t></w:t></w:r>');
         done();
       });
     });
@@ -124,7 +124,7 @@ describe('parser', function () {
       });
     });
     it('It should find multiple markers which are in another marker with others markers', function (done) {
-      callFindMarkers('<w:r test="{d.lolo}">{d.color}<w:color /><w:t>{</w:t></w:r><w:r ><w:color w:val="{d.perso[i].color}" /><w:t>d.perso</w:t></w:r><w:r><w:rPr test="{d.perso[i].test}"><w:color /></w:rPr><w:t>[i].nom}</w:t class="{d.lala}">{d.test}</w:r>', function (err, cleanedXml, markers) {
+      callFindMarkers('<w:r cli-test="{d.lolo}">{d.color}<w:color /><w:t>{</w:t></w:r><w:r ><w:color w:val="{d.perso[i].color}" /><w:t>d.perso</w:t></w:r><w:r><w:rPr cli-test="{d.perso[i].cli-test}"><w:color /></w:rPr><w:t>[i].nom}</w:t class="{d.lala}">{d.cli-test}</w:r>', function (err, cleanedXml, markers) {
         helper.assert(err, null);
         helper.assert(markers, [
           {pos : 12, name : '_root.d.lolo'},
@@ -135,7 +135,7 @@ describe('parser', function () {
           {pos : 147, name : '_root.d.lala'},
           {pos : 150, name : '_root.d.test'}
         ]);
-        helper.assert(cleanedXml, '<w:r test="\uFFFF">\uFFFF<w:color /><w:t>\uFFFF</w:t></w:r><w:r ><w:color w:val="\uFFFF" /><w:t></w:t></w:r><w:r><w:rPr test="\uFFFF"><w:color /></w:rPr><w:t></w:t class="\uFFFF">\uFFFF</w:r>');
+        helper.assert(cleanedXml, '<w:r cli-test="\uFFFF">\uFFFF<w:color /><w:t>\uFFFF</w:t></w:r><w:r ><w:color w:val="\uFFFF" /><w:t></w:t></w:r><w:r><w:rPr cli-test="\uFFFF"><w:color /></w:rPr><w:t></w:t class="\uFFFF">\uFFFF</w:r>');
         done();
       });
     });
@@ -216,14 +216,14 @@ describe('parser', function () {
       });
     });
     it('should keep whitespaces between simple quotes', function (done) {
-      callFindMarkers("<div>{d.menu:test('hello, world is great')}<div>", function (err, cleanedXml, markers) {
+      callFindMarkers("<div>{d.menu:cli-test('hello, world is great')}<div>", function (err, cleanedXml, markers) {
         helper.assert(err, null);
         helper.assert(markers, [{pos : 6, name : '_root.d.menu:test(\'hello, world is great\')'}]);
         done();
       });
     });
     it('should keep whitespaces between encoded simple quotes, and it should convert encoded quotes', function (done) {
-      parser.findMarkers('<div>{d.menu:test(&apos;hello, world is great&apos;)}<div>', function (err, cleanedXml, markers) {
+      parser.findMarkers('<div>{d.menu:cli-test(&apos;hello, world is great&apos;)}<div>', function (err, cleanedXml, markers) {
         helper.assert(err, null);
         helper.assert(markers, [{pos : 6, name : '_root.d.menu:test(\'hello, world is great\')'}]);
         done();
@@ -376,22 +376,22 @@ describe('parser', function () {
 
   describe('extractMarker', function () {
     it('should extract the marker from the xml and keep whitespaces and special characters (-> very important)', function () {
-      assert.equal(parser.extractMarker('menu<xmla>why[1].test'), 'menuwhy[1].test');
-      assert.equal(parser.extractMarker('  menu<xmla>why[1].test    '), '  menuwhy[1].test    ');
-      assert.equal(parser.extractMarker('  menu <xmla> why[ $ <tr> dead = <bd> true + 1 ].test : int    '), '  menu  why[ $  dead =  true + 1 ].test : int    ');
-      assert.equal(parser.extractMarker('menu<some xml data>why<sqs>[1<sas  >].test'), 'menuwhy[1].test');
-      assert.equal(parser.extractMarker(' menu  <some xml data>  why  <sqs> [ 1 <sas  >] . test '), ' menu    why   [ 1 ] . test ');
-      assert.equal(parser.extractMarker('menu<some xml data>why<sqs>[1<sas  >\n<qqs>].test'), 'menuwhy[1\n].test');
-      assert.equal(parser.extractMarker('menu<some xml data>why<sqs>[1<sas  >\t<qqs>].test'), 'menuwhy[1\t].test');
-      assert.equal(parser.extractMarker('menu</w:t></w:r><w:r w:rsidR="00013394"><w:t>why</w:t></w:r><w:bookmarkStart w:id="0" w:name="_GoBack"/><w:bookmarkEnd w:id="0"/><w:r w:rsidR="00013394"><w:t>[1].</w:t></w:r><w:r w:rsidR="00013394"><w:t>test</w:t></w:r><w:r w:rsidR="00013394"><w:t xml:space="preserve">'),
-        'menuwhy[1].test');
+      assert.equal(parser.extractMarker('menu<xmla>why[1].cli-test'), 'menuwhy[1].cli-test');
+      assert.equal(parser.extractMarker('  menu<xmla>why[1].cli-test    '), '  menuwhy[1].cli-test    ');
+      assert.equal(parser.extractMarker('  menu <xmla> why[ $ <tr> dead = <bd> true + 1 ].cli-test : int    '), '  menu  why[ $  dead =  true + 1 ].cli-test : int    ');
+      assert.equal(parser.extractMarker('menu<some xml data>why<sqs>[1<sas  >].cli-test'), 'menuwhy[1].cli-test');
+      assert.equal(parser.extractMarker(' menu  <some xml data>  why  <sqs> [ 1 <sas  >] . cli-test '), ' menu    why   [ 1 ] . cli-test ');
+      assert.equal(parser.extractMarker('menu<some xml data>why<sqs>[1<sas  >\n<qqs>].cli-test'), 'menuwhy[1\n].cli-test');
+      assert.equal(parser.extractMarker('menu<some xml data>why<sqs>[1<sas  >\t<qqs>].cli-test'), 'menuwhy[1\t].cli-test');
+      assert.equal(parser.extractMarker('menu</w:t></w:r><w:r w:rsidR="00013394"><w:t>why</w:t></w:r><w:bookmarkStart w:id="0" w:name="_GoBack"/><w:bookmarkEnd w:id="0"/><w:r w:rsidR="00013394"><w:t>[1].</w:t></w:r><w:r w:rsidR="00013394"><w:t>cli-test</w:t></w:r><w:r w:rsidR="00013394"><w:t xml:space="preserve">'),
+        'menuwhy[1].cli-test');
     });
   });
 
   describe('cleanMarker', function () {
     it('should remove whitespaces and special characters in the markers', function () {
-      assert.equal(parser.cleanMarker('menuwhy[1\n].\ntest')            , 'menuwhy[1].test');
-      assert.equal(parser.cleanMarker('menuwhy[1\t].test')            , 'menuwhy[1].test');
+      assert.equal(parser.cleanMarker('menuwhy[1\n].\ncli-test')            , 'menuwhy[1].cli-test');
+      assert.equal(parser.cleanMarker('menuwhy[1\t].cli-test')            , 'menuwhy[1].cli-test');
       assert.equal(parser.cleanMarker(' menu &lt; &lt; ')      , ' menu < < ');
       assert.equal(parser.cleanMarker(' menu &gt; &gt; ')      , ' menu > > ');
       assert.equal(parser.cleanMarker(' menu &apos; &apos; ')      , ' menu \' \' ');
@@ -610,9 +610,9 @@ describe('parser', function () {
           }
         }
       };
-      parser.translate('<xmlstart>{t(price &lt; 100)}<b>test</b><span>{t(productPrice &gt;= salePrice &gt; mac&apos;doProductPrice)}</span>', _options, function (err, xmlTranslated) {
+      parser.translate('<xmlstart>{t(price &lt; 100)}<b>cli-test</b><span>{t(productPrice &gt;= salePrice &gt; mac&apos;doProductPrice)}</span>', _options, function (err, xmlTranslated) {
         helper.assert(err, null);
-        helper.assert(xmlTranslated, '<xmlstart>prix &lt; 100<b>test</b><span>prixProduit &gt;= prixVente &gt; prixProduitMac&apos;Do</span>');
+        helper.assert(xmlTranslated, '<xmlstart>prix &lt; 100<b>cli-test</b><span>prixProduit &gt;= prixVente &gt; prixProduitMac&apos;Do</span>');
         done();
       });
     });
@@ -621,9 +621,9 @@ describe('parser', function () {
       var _objLang = {
         'ñôñË' : '¥€§'
       };
-      parser.translate('<xmlstart><b>test{t(&ntilde;&ocirc;&ntilde;&Euml;)}</b></span>', _objLang, function(err, xmlTranslated){
+      parser.translate('<xmlstart><b>cli-test{t(&ntilde;&ocirc;&ntilde;&Euml;)}</b></span>', _objLang, function(err, xmlTranslated){
         helper.assert(err, null);
-        helper.assert(xmlTranslated, '<xmlstart><b>test&yen;&euro;&sect;</b></span>');
+        helper.assert(xmlTranslated, '<xmlstart><b>cli-test&yen;&euro;&sect;</b></span>');
         done();
       });
     });*/
@@ -679,7 +679,7 @@ describe('parser', function () {
         helper.assert(variables[0].code, 'i=5');
         helper.assert(variables[1].name, 'def');
         helper.assert(variables[1].code, 'id=2');
-        helper.assert(variables[1].regex.test('<sdjh> test[$def)] <td>' ), true);
+        helper.assert(variables[1].regex.test('<sdjh> cli-test[$def)] <td>' ), true);
         done();
       });
     });
@@ -702,13 +702,13 @@ describe('parser', function () {
       });
     });
     it('should extract multiple variables ', function (done) {
-      parser.findVariables('<xmlstart>{me<interxml>n<bullshit>u}<div>{ <br> # <bla> def =<br/>  id<bla>=2  }</div>{ <br> # <bla> my_Var2= <br/>  test<bla>[1=5]}</xmlend>', function (err, xml, variables) {
+      parser.findVariables('<xmlstart>{me<interxml>n<bullshit>u}<div>{ <br> # <bla> def =<br/>  id<bla>=2  }</div>{ <br> # <bla> my_Var2= <br/>  cli-test<bla>[1=5]}</xmlend>', function (err, xml, variables) {
         helper.assert(err, null);
         helper.assert(xml, '<xmlstart>{me<interxml>n<bullshit>u}<div><br><bla><br/><bla></div><br><bla><br/><bla></xmlend>');
         helper.assert(variables[0].name, 'def');
         helper.assert(variables[0].code, 'id=2');
         helper.assert(variables[1].name, 'my_Var2');
-        helper.assert(variables[1].code, 'test[1=5]');
+        helper.assert(variables[1].code, 'cli-test[1=5]');
         done();
       });
     });
@@ -736,26 +736,26 @@ describe('parser', function () {
         helper.assert(xml, '<xmlstart>{me<interxml>n<bullshit>u}<div><br><bla><tr><tr><tr/><tr/><td><td><tf></div></xmlend>');
         helper.assert(variables[0].name, 'myFn');
         helper.assert(variables[0].code, 'id=_$0_,g=_$1_');
-        helper.assert(variables[0].regex.test('<sdjh> test[$myFn(1, 2)] <td>' ), true);
-        helper.assert(variables[0].regex.test('<sdjh> test[myFn(1, 2)] <td>' ), false);
+        helper.assert(variables[0].regex.test('<sdjh> cli-test[$myFn(1, 2)] <td>' ), true);
+        helper.assert(variables[0].regex.test('<sdjh> cli-test[myFn(1, 2)] <td>' ), false);
         done();
       });
     });
     it('should keep whitespaces between simple quotes', function (done) {
-      parser.findVariables("<div>{#myFn = test ('hello, world is great')}<div>", function (err, xml, variables) {
+      parser.findVariables("<div>{#myFn = cli-test ('hello, world is great')}<div>", function (err, xml, variables) {
         helper.assert(err, null);
         helper.assert(xml, '<div><div>');
         helper.assert(variables[0].name, 'myFn');
-        helper.assert(variables[0].code, 'test(\'hello, world is great\')');
+        helper.assert(variables[0].code, 'cli-test(\'hello, world is great\')');
         done();
       });
     });
     it('should keep whitespaces between encoded simple quotes, and it should convert encoded quotes', function (done) {
-      parser.findVariables('<div>{#myFn = test (&apos;hello, world is great&apos;)}<div>', function (err, xml, variables) {
+      parser.findVariables('<div>{#myFn = cli-test (&apos;hello, world is great&apos;)}<div>', function (err, xml, variables) {
         helper.assert(err, null);
         helper.assert(xml, '<div><div>');
         helper.assert(variables[0].name, 'myFn');
-        helper.assert(variables[0].code, 'test(\'hello, world is great\')');
+        helper.assert(variables[0].code, 'cli-test(\'hello, world is great\')');
         done();
       });
     });
@@ -1016,7 +1016,7 @@ describe('parser', function () {
       });
     });
     it('should accept tags with variables', function () {
-      var _str = 'menu </p><p> </p></tr:w><tr:w color=test test=3> <p> basket </p> balle';
+      var _str = 'menu </p><p> </p></tr:w><tr:w color=cli-test cli-test=3> <p> basket </p> balle';
       helper.assert(parser.findPivot(_str), {
         part1End   : {tag : 'tr:w', pos : 24 },
         part2Start : {tag : 'tr:w', pos : 24 }
@@ -1149,7 +1149,7 @@ describe('parser', function () {
       helper.assert(parser.findRepetitionPosition(_xml, _pivot), _expectedRange);
     });
     it('should detect the repetition even if the start tag contains some meta data', function () {
-      var _xml = 'qsjh k <tr w:blue color=test> menu <r/><p> bla </p><p> foot </p> </tr><tr w:blue color=test> <p> basket </p><p> tennis </p>    balle </tr> dqd';
+      var _xml = 'qsjh k <tr w:blue color=cli-test> menu <r/><p> bla </p><p> foot </p> </tr><tr w:blue color=cli-test> <p> basket </p><p> tennis </p>    balle </tr> dqd';
       var _pivot = {
         part1End   : {tag : 'tr', pos : 70 },
         part2Start : {tag : 'tr', pos : 70 }
@@ -1176,7 +1176,7 @@ describe('parser', function () {
       helper.assert(parser.findRepetitionPosition(_xml, _pivot), _expectedRange);
     });
     it('should return 0 if the start tag is not found', function () {
-      var _xml = 'qsjh k  qsd:blue color=test   menu <r/><p> bla </p><p> foot </p> </tr><tr> <p> basket </p><p> tennis </p>    balle </tr> dqd';
+      var _xml = 'qsjh k  qsd:blue color=cli-test   menu <r/><p> bla </p><p> foot </p> </tr><tr> <p> basket </p><p> tennis </p>    balle </tr> dqd';
       var _pivot = {
         part1End   : {tag : 'tr', pos : 70 },
         part2Start : {tag : 'tr', pos : 70 }

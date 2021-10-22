@@ -2,8 +2,8 @@ var assert = require('assert');
 var helper  = require('../lib/helper');
 var path  = require('path');
 var fs  = require('fs');
-var rootPath = process.cwd(); // where "make test" is called
-var testPath = rootPath+'/test/test/';
+var rootPath = process.cwd(); // where "make cli-test" is called
+var testPath = rootPath+'/cli-test/cli-test/';
 
 describe('helper', function () {
 
@@ -181,7 +181,7 @@ describe('helper', function () {
       // create the directory
       fs.mkdirSync(testPath, parseInt('0755', 8));
       var _allFiles = [
-        path.join(testPath, 'test.sql'),
+        path.join(testPath, 'cli-test.sql'),
         path.join(testPath, 'test1.sql'),
         path.join(testPath, 'test2.sql')
       ];
@@ -199,7 +199,7 @@ describe('helper', function () {
       // create the directory
       fs.mkdirSync(testPath, parseInt('0755', 8));
       var _allFiles = [
-        path.join(testPath, 'test.sql'),
+        path.join(testPath, 'cli-test.sql'),
         path.join(testPath, 'test1.js'),
         path.join(testPath, 'test2.csv')
       ];
@@ -221,7 +221,7 @@ describe('helper', function () {
       if (!fs.existsSync(_testedPath)) {
         fs.mkdirSync(_testedPath, parseInt('0755', 8));
       }
-      fs.writeFileSync(path.join(_testedPath, 'test.js'), 'test');
+      fs.writeFileSync(path.join(_testedPath, 'cli-test.js'), 'test');
       fs.writeFileSync(path.join(_testedPath, 'test2.sql'), 'test');
       var _subDir = path.join(_testedPath, 'otherDir');
       if (!fs.existsSync(_subDir)) {

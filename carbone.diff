@@ -1,0 +1,4552 @@
+diff --git .gitignore .gitignore
+index 063d4af..c583cef 100644
+--- .gitignore
++++ .gitignore
+@@ -42,4 +42,7 @@ render/*
+ template/*
+ asset/*
+ 0formation/*
++examples/*
++out/*
++request/*
+ 
+diff --git formatters/array.js formatters/array.js
+index 5ab21c6..f0a9012 100644
+--- formatters/array.js
++++ formatters/array.js
+@@ -1,3 +1,4 @@
++var get = require('lodash/get');
+ 
+ /**
+  * Flatten an array of String or Number
+@@ -74,7 +75,7 @@ function arrayMap (d, objSeparator, attributeSeparator) {
+       if (_isAttributeFilterActive === true) {
+         for (var j = 3; j < arguments.length; j++) {
+           var _att = arguments[j];
+-          _flatObj.push(_obj[_att]);
++          _flatObj.push(get(_obj,_att));
+         }
+       }
+       else if (_obj instanceof Object === false) {
+diff --git licarbone-cli.js licarbone-cli.js
+new file mode 100755
+index 0000000..da85ecc
+--- /dev/null
++++ licarbone-cli.js
+@@ -0,0 +1,121 @@
++#!/usr/bin/env node
++
++const yargonaut = require("yargonaut").style("blue");
++const yargs = require("yargs");
++const fs = require("fs");
++const carbone = require("../liindex");
++const figlet = require("figlet");
++const printgenericfields = require("./printgenericfields");
++const get = require("lodash/get");
++const chalk = yargonaut.chalk();
++
++const options = yargs
++  .usage(
++    chalk.red(figlet.textSync("KEEP SOLUTIONS")) +
++      "\n\n" +
++      chalk.blue("CARBONE by David Grealund") +
++      "\n\n" +
++      "Generate reports (odt, docx, txt, pdf, ods, xlsx, csv) via a template (odt, docx, xlsx, csv)." +
++      "\n\nUsage\n -d <json data> -t <path to template> -o <json with options> -r <path of the file to render>"
++  )
++  .option("d", {
++    alias: "data",
++    describe: "path to json with data",
++    type: "string",
++    demandOption: true,
++  })
++  .option("t", {
++    alias: "template",
++    describe: "path to document template",
++    type: "string",
++    demandOption: true,
++  })
++  .option("r", {
++    alias: "render",
++    describe: "path to render the new file",
++    type: "string",
++    demandOption: true,
++  })
++  .option("o", {
++    alias: "options",
++    describe: "path to json with options",
++    type: "string",
++    demandOption: false,
++  })
++  .option("l", {
++    alias: "language",
++    describe: "the language code",
++    type: "string",
++    demandOption: false,
++  })
++  .version().argv;
++
++let rawdata = fs.readFileSync(options.data);
++let data = JSON.parse(rawdata);
++
++let rawoptions = options.options ? fs.readFileSync(options.options) : null;
++let carboneoptions = rawoptions ? JSON.parse(rawoptions) : "";
++carboneoptions.lang = options.language || carboneoptions.lang || "en";
++
++// Process the data if there are genericOptions
++if (carboneoptions.generic) {
++  let genericFields = carboneoptions.generic.fields;
++
++  if (data.record) {
++    let fields = [];
++    genericFields.map((genericField) => {
++      let value = get(data.record, genericField.field);
++      let label = genericField.label[carboneoptions.lang];
++
++      if (value) {
++        fields.push({
++          label: label,
++          value: printgenericfields.print(
++            genericField,
++            value,
++            carboneoptions.lang
++          ),
++        });
++      }
++    });
++
++    data.generic = { record: { fields: fields } };
++  } else if (data.records) {
++    let fields = [];
++
++    data.records.map((record) => {
++      let recordFields = [];
++      genericFields.map((genericField) => {
++        let value = get(record, genericField.field);
++        let label = genericField.label[carboneoptions.lang];
++
++        if (value) {
++          recordFields.push({
++            label: label,
++            value: printgenericfields.print(
++              genericField,
++              value,
++              carboneoptions.lang
++            ),
++          });
++        }
++      });
++      fields.push({ fields: recordFields });
++    });
++
++    data.generic = { records: fields };
++  }
++}
++
++// Generate a report using the sample template provided by carbone module
++// This LibreOffice template contains "Hello {d.firstname} {d.lastname} !"
++// Of course, you can create your own templates!
++carbone.render(options.template, data, carboneoptions, function (err, result) {
++  if (err) {
++    return console.log(err);
++  }
++  // write the result
++  fs.writeFileSync(options.render, result);
++  console.log(chalk.green("File generated in " + options.render));
++  process.exit();
++});
+diff --git lifile.js lifile.js
+index 27e0880..ba9579f 100644
+--- lifile.js
++++ lifile.js
+@@ -1,27 +1,28 @@
+-var path  = require('path');
+-var fs = require('fs');
+-var params = require('./params');
+-var yauzl = require('yauzl');
+-var unzipEmbeddedFileTypes = ['.xlsx', '.ods'];
+-var yazl = require('yazl');
+-var debug = require('debug')('carbone');
++var path = require("path");
++var fs = require("fs");
++var params = require("./params");
++var yauzl = require("yauzl");
++var unzipEmbeddedFileTypes = [".xlsx", ".ods"];
++var yazl = require("yazl");
++var debug = require("debug")("carbone");
++var QRCode = require("qrcode");
++var svg = require("qrcode/lirenderer/svg-tag");
+ 
+ var file = {
+-
+   /**
+    * is Zipped return callback(true) if the file is zipped
+    * @param  {String}   filePath file path
+    * @param  {Function} callback(err, isZipped)
+    */
+-  isZipped : function (filePath, callback) {
++  isZipped: function (filePath, callback) {
+     var _buf = Buffer.allocUnsafe(10);
+-    fs.open(filePath, 'r', function (err, fd) {
++    fs.open(filePath, "r", function (err, fd) {
+       if (err) {
+         return callback(err, false);
+       }
+       fs.read(fd, _buf, 0, 10, 0, function (err, bytesRead, buffer) {
+         fs.close(fd, function () {
+-          callback(err, (buffer.slice(0, 2).toString() === 'PK'));
++          callback(err, buffer.slice(0, 2).toString() === "PK");
+         });
+       });
+     });
+@@ -32,47 +33,49 @@ var file = {
+    * @param  {String}   filePath              file to unzip
+    * @param  {Function} callback(err, files)  files is an array of files ['name':'filename', 'buffer':Buffer]
+    */
+-  unzip : function (filePath, callback) {
++  unzip: function (filePath, callback) {
+     var _unzippedFiles = [];
+     var _unzipFn = yauzl.open;
+     if (Buffer.isBuffer(filePath) === true) {
+       _unzipFn = yauzl.fromBuffer;
+     }
+-    _unzipFn(filePath, {lazyEntries : true, decodeStrings : true}, function (err, zipfile) {
++    _unzipFn(filePath, { lazyEntries: true, decodeStrings: true }, function (
++      err,
++      zipfile
++    ) {
+       if (err) {
+         return callback(err);
+       }
+-      zipfile.on('end', function () {
++      zipfile.on("end", function () {
+         zipfile.close();
+         return callback(null, _unzippedFiles);
+       });
+-      zipfile.on('error', callback);
++      zipfile.on("error", callback);
+       zipfile.readEntry();
+-      zipfile.on('entry', function (entry) {
++      zipfile.on("entry", function (entry) {
+         var _unzippedFile = {
+-          name : entry.fileName,
+-          data : Buffer.from([])
++          name: entry.fileName,
++          data: Buffer.from([]),
+         };
+         _unzippedFiles.push(_unzippedFile);
+         if (/\/$/.test(entry.fileName)) {
+           // directory file names end with '/'
+           zipfile.readEntry();
+-        }
+-        else {
++        } else {
+           zipfile.openReadStream(entry, function (err, readStream) {
+             if (err) {
+               zipfile.close();
+               return callback(err);
+             }
+             var buffers = [];
+-            readStream.on('data', function (data) {
++            readStream.on("data", function (data) {
+               buffers.push(data);
+             });
+-            readStream.on('end', function () {
++            readStream.on("end", function () {
+               _unzippedFile.data = Buffer.concat(buffers);
+               zipfile.readEntry();
+             });
+-            readStream.on('error', function (err) {
++            readStream.on("error", function (err) {
+               zipfile.close();
+               return callback(err);
+             });
+@@ -87,25 +90,24 @@ var file = {
+    * @param  {Array}    files                 files is an array of files ['name':'filename', 'data':Buffer]
+    * @param  {Function} callback(err, result) result is a buffer (the zip file)
+    */
+-  zip : function (files, callback) {
++  zip: function (files, callback) {
+     var _buffer = [];
+     var _zip = new yazl.ZipFile();
+-    _zip.outputStream.on('data', function (data) {
++    _zip.outputStream.on("data", function (data) {
+       _buffer.push(data);
+     });
+-    _zip.outputStream.on('error', function (err) {
+-      debug('Error when building zip file ' + err);
++    _zip.outputStream.on("error", function (err) {
++      debug("Error when building zip file " + err);
+     });
+-    _zip.outputStream.on('end', function () {
++    _zip.outputStream.on("end", function () {
+       var _finalBuffer = Buffer.concat(_buffer);
+       callback(null, _finalBuffer);
+     });
+     for (var i = 0; i < files.length; i++) {
+       var _file = files[i];
+-      if (_file.name.endsWith('/') === true) {
++      if (_file.name.endsWith("/") === true) {
+         _zip.addEmptyDirectory(_file.name);
+-      }
+-      else {
++      } else {
+         _zip.addBuffer(Buffer.from(_file.data), _file.name);
+       }
+     }
+@@ -117,12 +119,12 @@ var file = {
+    * @param  {String}   templateId               template name (with or without the path)
+    * @param  {Function} callback(err, template)
+    */
+-  openTemplate : function (templateId, callback) {
++  openTemplate: function (templateId, callback) {
+     var _template = {
+-      isZipped   : false,
+-      filename   : templateId,
+-      embeddings : [],
+-      files      : []
++      isZipped: false,
++      filename: templateId,
++      embeddings: [],
++      files: [],
+     };
+     // security, remove access on parent directory
+     // if (/\.\./.test(path.dirname(templateId)) === true) {
+@@ -136,19 +138,20 @@ var file = {
+       }
+       if (isZipped === true) {
+         _template.isZipped = true;
+-        var _filesToUnzip = [{
+-          name : '',
+-          data : _templateFile
+-        }];
++        var _filesToUnzip = [
++          {
++            name: "",
++            data: _templateFile,
++          },
++        ];
+         return unzipFiles(_template, _filesToUnzip, callback);
+-      }
+-      else {
+-        fs.readFile(_templateFile, 'utf8', function (err, data) {
++      } else {
++        fs.readFile(_templateFile, "utf8", function (err, data) {
+           var _file = {
+-            name     : path.basename(templateId),
+-            data     : data,
+-            isMarked : true,
+-            parent   : ''
++            name: path.basename(templateId),
++            data: data,
++            isMarked: true,
++            parent: "",
+           };
+           _template.files.push(_file);
+           return callback(err, _template);
+@@ -161,36 +164,51 @@ var file = {
+    * Check the extension of template
+    * @param {Object} template Template to analyze
+    */
+-  detectType : function (template) {
+-    if (this._checkWordInFilename(template, 'word/')) {
+-      return 'docx';
++  detectType: function (template) {
++    if (this._checkWordInFilename(template, "word/")) {
++      return "docx";
+     }
+-    if (this._checkWordInFilename(template, 'xl/')) {
+-      return 'xlsx';
++    if (this._checkWordInFilename(template, "xl/")) {
++      return "xlsx";
+     }
+-    if (this._checkWordInFilename(template, 'ppt/')) {
+-      return 'pptx';
++    if (this._checkWordInFilename(template, "ppt/")) {
++      return "pptx";
+     }
+-    if (this._checkMimetypeFile(template, 'application/vnd.oasis.opendocument.text')) {
+-      return 'odt';
++    if (
++      this._checkMimetypeFile(
++        template,
++        "application/vnd.oasis.opendocument.text"
++      )
++    ) {
++      return "odt";
+     }
+-    if (this._checkMimetypeFile(template, 'application/vnd.oasis.opendocument.spreadsheet')) {
+-      return 'ods';
++    if (
++      this._checkMimetypeFile(
++        template,
++        "application/vnd.oasis.opendocument.spreadsheet"
++      )
++    ) {
++      return "ods";
+     }
+-    if (this._checkMimetypeFile(template, 'application/vnd.oasis.opendocument.presentation')) {
+-      return 'odp';
++    if (
++      this._checkMimetypeFile(
++        template,
++        "application/vnd.oasis.opendocument.presentation"
++      )
++    ) {
++      return "odp";
+     }
+     if (this._isXHTMLFile(template)) {
+-      return 'xhtml';
++      return "xhtml";
+     }
+     if (this._isHTMLFile(template)) {
+-      return 'html';
++      return "html";
+     }
+     if (this._isXMLFile(template)) {
+-      return 'xml';
++      return "xml";
+     }
+     var _extname = path.extname(template.filename).slice(1);
+-    if (template.isZipped === false && _extname !== '') {
++    if (template.isZipped === false && _extname !== "") {
+       return _extname;
+     }
+     return null;
+@@ -200,11 +218,11 @@ var file = {
+    * Check if the file is a XML file
+    * @param {Object} template File content to analyze
+    */
+-  _isXMLFile : function (template) {
++  _isXMLFile: function (template) {
+     for (var i = 0; i < template.files.length; i++) {
+       var _trimmedTemplate = template.files[i].data.trim();
+ 
+-      if (_trimmedTemplate.startsWith('<')) {
++      if (_trimmedTemplate.startsWith("<")) {
+         return true;
+       }
+     }
+@@ -216,12 +234,12 @@ var file = {
+    * Check if the file is an XHTML file
+    * @param {Object} template File content to analyze
+    */
+-  _isXHTMLFile : function (template) {
++  _isXHTMLFile: function (template) {
+     for (var i = 0; i < template.files.length; i++) {
+       var _trimmedTemplate = template.files[i].data.trim();
+       var _xmlnsRegex = /<html xmlns="/gm;
+ 
+-      if (_trimmedTemplate.startsWith('<!DOCTYPE')) {
++      if (_trimmedTemplate.startsWith("<!DOCTYPE")) {
+         if (_xmlnsRegex.test(_trimmedTemplate)) {
+           return true;
+         }
+@@ -235,12 +253,12 @@ var file = {
+    * Check if the file is an HTML file
+    * @param {Object} template File content to analyze
+    */
+-  _isHTMLFile : function (template) {
++  _isHTMLFile: function (template) {
+     for (var i = 0; i < template.files.length; i++) {
+       var _trimmedTemplate = template.files[i].data.trim();
+       var _htmlRegex = /<html/gm;
+ 
+-      if (_trimmedTemplate.startsWith('<!DOCTYPE')) {
++      if (_trimmedTemplate.startsWith("<!DOCTYPE")) {
+         if (_htmlRegex.test(_trimmedTemplate)) {
+           return true;
+         }
+@@ -255,9 +273,9 @@ var file = {
+    * @param {Object} template Template object if unzipped. Else it's a string
+    * @param {String} string String to match in mimetype file
+    */
+-  _checkMimetypeFile : function (template, string) {
++  _checkMimetypeFile: function (template, string) {
+     for (var i = 0; i < template.files.length; i++) {
+-      if (template.files[i].name === 'mimetype') {
++      if (template.files[i].name === "mimetype") {
+         if (template.files[i].data.toString() === string) {
+           return true;
+         }
+@@ -272,7 +290,7 @@ var file = {
+    * @param {Object} template Template object if unzipped. Else it's a string
+    * @param {String} string String to check
+    */
+-  _checkWordInFilename : function (template, string) {
++  _checkWordInFilename: function (template, string) {
+     for (var i = 0; i < template.files.length; i++) {
+       if (template.files[i].name.startsWith(string)) {
+         return true;
+@@ -287,18 +305,18 @@ var file = {
+    * @param  {Object}   report              report object. Example: {'isZipped': true, files:[{'name': 'bla', 'data': 'buffer or string'}]}
+    * @param  {Function} callback(err, data) data can be a buffer (docx,...) or a string (xml)
+    */
+-  buildFile : function (report, callback) {
+-    if (report.isZipped===true) {
++  buildFile: function (report, callback) {
++    if (report.isZipped === true) {
+       return zipFiles(report.files, callback);
+-    }
+-    else {
++    } else {
+       if (report.files.length !== 1) {
+-        throw Error('This report is not zipped and does not contain exactly one file');
++        throw Error(
++          "This report is not zipped and does not contain exactly one file"
++        );
+       }
+       return callback(null, report.files[0].data);
+     }
+-  }
+-
++  },
+ };
+ 
+ /**
+@@ -307,7 +325,7 @@ var file = {
+  * @param  {Array}    filesToUnzip
+  * @param  {Function} callback(err, template)
+  */
+-function unzipFiles (template, filesToUnzip, callback) {
++function unzipFiles(template, filesToUnzip, callback) {
+   if (filesToUnzip.length === 0) {
+     return callback(null, template);
+   }
+@@ -321,17 +339,20 @@ function unzipFiles (template, filesToUnzip, callback) {
+       var _extname = path.extname(_file.name);
+       _file.isMarked = false;
+       _file.parent = _fileToUnzip.name;
+-      if (_extname === '.xml' || _extname === '.rels') {
++      // Search xml and rels files for carbone tags by default
++      if (_extname === ".xml" || _extname === ".rels") {
+         _file.isMarked = true;
+         _file.data = _file.data.toString();
+         template.files.push(_file);
+       }
+       // only unzip first level
+-      else if (_file.parent === '' && unzipEmbeddedFileTypes.indexOf(_extname) !== -1) {
++      else if (
++        _file.parent === "" &&
++        unzipEmbeddedFileTypes.indexOf(_extname) !== -1
++      ) {
+         template.embeddings.push(_file.name);
+         filesToUnzip.push(_file);
+-      }
+-      else {
++      } else {
+         template.files.push(_file);
+       }
+     }
+@@ -344,7 +365,7 @@ function unzipFiles (template, filesToUnzip, callback) {
+  * @param  {Array}   filesToZip
+  * @param  {Function} callback(err, buffer)
+  */
+-function zipFiles (filesToZip, callback) {
++async function zipFiles(filesToZip, callback) {
+   var _previousParentName = null;
+   var _index = filesToZip.length - 1;
+   for (; _index >= 0; _index--) {
+@@ -352,12 +373,57 @@ function zipFiles (filesToZip, callback) {
+     if (_file.parent !== _previousParentName && _previousParentName !== null) {
+       break;
+     }
+-    if (Buffer.isBuffer(_file.data) === false) {
+-      try {
+-        _file.data = Buffer.from(_file.data, 'utf8');
++
++    // Check if there are odt binary tags in file data
++    if (_file.data.includes("<office:binary-data>")) {
++      let rx = /<office:binary-data>(.*)<\/office:binary-data>/g;
++      var match;
++      // eslint-disable-next-line no-cond-assign
++      while ((match = rx.exec(_file.data)) !== null) {
++        let url = match[1];
++        // Replace the base 64 url by the base64 file binary
++        if (url.includes("base64")) {
++          let str = url.split(";base64,").pop();
++          _file.data = file.data.split(url).join(Buffer.from(str, "base64"));
++        } 
++        // Replace qrcode url by a base64 binary
++        else if (_file.data.includes("qrcode://")) {
++          let url = _file.data.replace("qrcode://", "");
++          let result = await generateQR(url);
++          let str = result.split(";base64,").pop();
++          _file.data = Buffer.from(str, 'base64');
++        }
++        // Replace the system file url by a base64 binary (odt must have only base64 binary)
++        else if (url.includes("file://")) {
++          let str = url.replace("file://", "");
++          _file.data = _file.data
++            .split(url)
++            .join(fs.readFileSync(str, { encoding: "base64" }));
++        }
+       }
+-      catch (e) {
+-        _file.data = Buffer.from('', 'utf8');
++    }
++    // Check if file data is a base64 file (docx), if so, encode it in a base64 buffer.
++    else if (_file.data.includes("base64")) {
++      let str = _file.data.split(";base64,").pop();
++      _file.data = Buffer.from(str, "base64");
++    }
++    // Check if file data is a file system url (docx), if so, encode it in a base64 buffer.
++    else if (_file.data.includes("file://")) {
++      let url = _file.data.replace("file://", "");
++      _file.data = fs.readFileSync(url);
++    } 
++    else if (_file.data.includes("qrcode://")) {
++      let url = _file.data.replace("qrcode://", "");
++      let result = await generateQR(url);
++      let str = result.split(";base64,").pop();
++      _file.data = Buffer.from(str, 'base64');
++    }
++    // Otherwise encode the xml data in utf8 format (default)
++    else if (Buffer.isBuffer(_file.data) === false) {
++      try {
++        _file.data = Buffer.from(_file.data, "utf8");
++      } catch (e) {
++        _file.data = Buffer.from("", "utf8");
+       }
+     }
+     _previousParentName = _file.parent;
+@@ -368,12 +434,19 @@ function zipFiles (filesToZip, callback) {
+       return callback(err, buffer);
+     }
+     filesToZip.unshift({
+-      name   : _previousParentName,
+-      data   : buffer,
+-      parent : ''
++      name: _previousParentName,
++      data: buffer,
++      parent: "",
+     });
+     return zipFiles(filesToZip, callback);
+   });
+ }
+ 
++const generateQR = async text => {
++
++    let res = await QRCode.toDataURL(text);
++    console.log(res);
++    return res;
++}
++
+ module.exports = file;
+diff --git liimageprocessor.js liimageprocessor.js
+new file mode 100644
+index 0000000..4df6400
+--- /dev/null
++++ liimageprocessor.js
+@@ -0,0 +1,209 @@
++/* eslint-disable array-callback-return */
++var path = require("path");
++var xml2js = require("xml2js");
++var xpath = require("xml2js-xpath");
++var extend = require("util")._extend;
++var sizeOf = require("image-size");
++
++var imageprocessor = {
++    clearEmptyImages: function(document) {
++      xml2js.parseString(document.data, (err, root) => {
++        let builder = new xml2js.Builder();
++        var empty = xpath
++        .find(root, "//w:drawing")
++        .filter(
++          (x) => xpath.find(x, "//pic:pic/pic:nvPicPr/pic:cNvPr")[0].$.descr === '' && xpath.find(x, "//pic:pic/pic:nvPicPr/pic:cNvPr")[0].$.dynamic === "true");
++
++        empty.map(item => {
++          item["wp:anchor"] = null;
++        });
++
++        document.data = builder.buildObject(root);
++
++      });
++      return document;
++    },
++
++    processDynamicImage: function (
++        report,
++        state,
++        document,
++        drawing,
++        picture,
++        definition,
++        fullUrl
++      ) {
++        let builder = new xml2js.Builder();
++      
++        var contains = definition.contains;
++      
++        // If image is to be contained and not stretched
++        if (contains === "true") {
++          xml2js.parseString(document.data, (err, result) => {
++            document.data = imageprocessor.processImageUrl(
++              result,
++              true,
++              fullUrl,
++              picture,
++              drawing,
++              builder
++            );
++          });
++        }
++      
++        var qrcode = definition.sqrcode ? true : false;
++      
++        // Get the relation element
++        var relationId = xpath.find(
++          xpath.find(picture, "//pic:blipFill")[0],
++          "//a:blip"
++        )[0].$["r:embed"];
++      
++        var relationNode = undefined;
++      
++        // Get the relation node in relations document
++        if (document.name.includes("word/header")) {
++          var header = document.name.split("word/").join("");
++          relationNode = report.files.find((x) =>
++            x.name.includes("word/_rels/" + header + ".rels")
++          );
++        } else if (document.name.includes("word/footer")) {
++          var footer = document.name.split("word/").join("");
++          relationNode = report.files.find((x) =>
++            x.name.includes("word/_rels/" + footer + "rels")
++          );
++        } else {
++          relationNode = report.files.find((x) =>
++            x.name.includes("word/_rels/document.xml.rels")
++          );
++        }
++      
++        // Parse the relation document
++        xml2js.parseString(relationNode.data, (err, relationMatch) => {
++          // Get all relations
++          var relations = xpath.find(relationMatch, "//Relationships");
++      
++          // Get the relation with our id
++          var relation = xpath
++            .find(relationMatch, "//Relationships/Relationship")
++            .find((x) => x.$.Id === relationId);
++          let relationState = state.find((x) => x.key === relationId);
++      
++          // If it as a tag in description and its not the first iteration
++          if (relationState && fullUrl) {
++            relationState.number += 1;
++      
++            // Get the media of the relation
++            let media = report.files.find(
++              (x) => x.name === "word/" + relation.$.Target
++            );
++      
++            // Get the corresponding relation node
++            let rel = relations[0].Relationship.find(
++              (x) => x.$.Id === relationId && x.$.Target === relation.$.Target
++            );
++      
++            // Copy the relation and change media values
++            let newRel = {};
++            var name = relation.$.Target.split(".").join(relationState.number + ".");
++            newRel.$ = extend({}, rel.$);
++            newRel.$.Id = relationId + "_" + relationState.number;
++            newRel.$.Target = name;
++            relationMatch.Relationships.Relationship.push(newRel);
++      
++            // Build the new relation document node
++      
++            relationNode.data = builder.buildObject(relationMatch);
++      
++            xml2js.parseString(document.data, (err, newResult) => {
++              // Find all pics
++              var pics = xpath.find(newResult, "//pic:pic");
++      
++              // Find out working pic
++              let pic = pics.find(
++                (x) =>
++                  xpath.find(xpath.find(x, "//pic:nvPicPr")[0], "//pic:cNvPr")[0].$
++                    .descr === fullUrl
++              );
++      
++              // Get the blip where the relation is setted and replace him by the new relation
++              let blip = pic["pic:blipFill"][0]["a:blip"][0];
++              blip.$["r:embed"] = blip.$["r:embed"] + "_" + relationState.number;
++              document.data = builder.buildObject(newResult);
++      
++              // Extend the media
++              let newMedia = extend({}, media);
++              newMedia.name = "word/" + name;
++              newMedia.data = fullUrl;
++      
++              // Remove the processed url for a inoquos relation tag
++              document.data = document.data
++                .split(fullUrl)
++                .join(relationId + "_" + relationState.number);
++      
++              // Add the new media to report files
++              report.files.push(newMedia);
++            });
++          }
++          // If has tag and its first iterationresult
++          else if (fullUrl) {
++            state.push({key: relationId, number: 1});
++      
++            // Find the media of the picture
++            let media = report.files.find(
++              (x) => x.name === "word/" + relation.$.Target
++            );
++      
++            // Remove the processed url for a inoquos relation tag
++            document.data = document.data.split(fullUrl).join(relationId);
++      
++            // Change the mock media binary data for the url (will be replaced in files.js by the binary)
++            media.data = qrcode ? "qrcode://" + fullUrl : fullUrl;
++          }
++        });
++        return {report: report, state: state};
++      },
++      processImageUrl: function(result, contains, fullUrl, match, drawing, builder) {
++        if (contains) {
++          let url = fullUrl;
++          let dimensions = null;
++          if (fullUrl.includes("file://")) {
++            url = fullUrl.replace("file://", "");
++            dimensions = sizeOf(url);
++          }
++          if (fullUrl.includes(";base64,")) {
++            url = fullUrl.split(";base64,").pop();
++            dimensions = sizeOf(Buffer.from(url, "base64"));
++          }
++      
++          let spPr = xpath.find(match, "//pic:spPr")[0];
++          let size = spPr["a:xfrm"][0]["a:ext"][0].$;
++          if (dimensions) {
++            if (dimensions.width > dimensions.height) {
++              let heigth = Math.round(
++                (size.cx * (dimensions.height * 10000)) / (dimensions.width * 10000)
++              );
++              size.cy = heigth.toString();
++              drawing["wp:anchor"][0]["wp:extent"][0] = { $: size };
++              spPr["a:xfrm"][0]["a:ext"][0] = { $: size };
++            } else {
++              let width = Math.round(
++                (size.cy * (dimensions.width * 10000)) / (dimensions.height * 10000)
++              );
++              size.cx = width.toString();
++              drawing["wp:anchor"][0]["wp:extent"][0] = { $: size };
++              spPr["a:xfrm"][0]["a:ext"][0] = { $: size };
++            }
++          } else {
++            size.cx = "0";
++            size.cy = "0";
++            drawing["wp:anchor"][0]["wp:extent"][0] = { $: size };
++            spPr["a:xfrm"][0]["a:ext"][0] = { $: size };
++            spPr = null;
++          }
++        }
++        return builder.buildObject(result);
++      }
++}
++
++module.exports = imageprocessor;
+\ No newline at end of file
+diff --git liindex.js liindex.js
+index e179a33..f473cca 100644
+--- liindex.js
++++ liindex.js
+@@ -1,22 +1,22 @@
+-var fs = require('fs');
+-var os = require('os');
+-var path = require('path');
+-var file = require('./file');
+-var params = require('./params');
+-var helper = require('./helper');
+-var format = require('./format');
+-var builder = require('./builder');
+-var parser = require('./parser');
+-var preprocessor = require('./preprocessor');
+-var translator = require('./translator');
+-var converter = require('./converter');
+-var moment = require('moment');
+-var locale = require('../formatters/_locale.js');
+-var debug = require('debug')('carbone');
++var fs = require("fs");
++var os = require("os");
++var path = require("path");
++var file = require("./file");
++var params = require("./params");
++var helper = require("./helper");
++var format = require("./format");
++var builder = require("./builder");
++var parser = require("./parser");
++var preprocessor = require("./preprocessor");
++var postprocessor = require("./postprocessor");
++var translator = require("./translator");
++var converter = require("./converter");
++var moment = require("moment");
++var locale = require("../formatters/_locale.js");
++var debug = require("debug")("carbone");
+ 
+ var carbone = {
+-
+-  formatters : {},
++  formatters: {},
+ 
+   /**
+    * This function is NOT asynchrone (It may create the template or temp directory synchronously)
+@@ -31,28 +31,30 @@ var carbone = {
+    *                           currencyRates  : rates, based on EUR { EUR : 1, USD : 1.14 }
+    *                         }
+    */
+-  set : function (options) {
++  set: function (options) {
+     for (var attr in options) {
+       if (params[attr] !== undefined) {
+         params[attr] = options[attr];
+-      }
+-      else {
+-        throw Error('Undefined options :' + attr);
++      } else {
++        throw Error("Undefined options :" + attr);
+       }
+     }
+     if (options.templatePath !== undefined) {
+       if (fs.existsSync(params.templatePath) === false) {
+-        fs.mkdirSync(params.templatePath, '0755');
++        fs.mkdirSync(params.templatePath, "0755");
+       }
+-      if (fs.existsSync(path.join(params.templatePath, 'lang')) === false) {
+-        fs.mkdirSync(path.join(params.templatePath, 'lang'), '0755');
++      if (fs.existsSync(path.join(params.templatePath, "lang")) === false) {
++        fs.mkdirSync(path.join(params.templatePath, "lang"), "0755");
+       }
+       if (options.translations === undefined) {
+         translator.loadTranslations(params.templatePath);
+       }
+     }
+-    if (options.tempPath !== undefined && fs.existsSync(params.tempPath) === false) {
+-      fs.mkdirSync(params.tempPath, '0755');
++    if (
++      options.tempPath !== undefined &&
++      fs.existsSync(params.tempPath) === false
++    ) {
++      fs.mkdirSync(params.tempPath, "0755");
+     }
+     if (options.factories !== undefined || options.startFactory !== undefined) {
+       converter.init();
+@@ -64,26 +66,29 @@ var carbone = {
+   /**
+    * Reset parameters (for test purpose)
+    */
+-  reset : function () {
++  reset: function () {
+     // manage node 0.8 / 0.10 differences
+-    var _nodeVersion = process.versions.node.split('.');
+-    var _tmpDir = (parseInt(_nodeVersion[0], 10) === 0 && parseInt(_nodeVersion[1], 10) < 10) ? os.tmpDir() : os.tmpdir();
++    var _nodeVersion = process.versions.node.split(".");
++    var _tmpDir =
++      parseInt(_nodeVersion[0], 10) === 0 && parseInt(_nodeVersion[1], 10) < 10
++        ? os.tmpDir()
++        : os.tmpdir();
+ 
+-    params.tempPath                = _tmpDir;
+-    params.templatePath            = process.cwd();
+-    params.factories               = 1;
+-    params.attempts                = 2;
+-    params.startFactory            = false;
+-    params.factoryMemoryFileSize   = 1;
+-    params.factoryMemoryThreshold  = 50;
++    params.tempPath = _tmpDir;
++    params.templatePath = process.cwd();
++    params.factories = 1;
++    params.attempts = 2;
++    params.startFactory = false;
++    params.factoryMemoryFileSize = 1;
++    params.factoryMemoryThreshold = 50;
+     params.converterFactoryTimeout = 60000;
+-    params.uidPrefix               = 'c';
+-    params.pipeNamePrefix          = '_carbone';
+-    params.lang                    = 'en';
+-    params.translations            = {};
+-    params.currencySource          = '';
+-    params.currencyTarget          = '';
+-    params.currencyRates           = { EUR : 1, USD : 1.14 };
++    params.uidPrefix = "c";
++    params.pipeNamePrefix = "_carbone";
++    params.lang = "en";
++    params.translations = {};
++    params.currencySource = "";
++    params.currencyTarget = "";
++    params.currencyRates = { EUR: 1, USD: 1.14 };
+   },
+ 
+   /**
+@@ -92,7 +97,7 @@ var carbone = {
+    * @param {String|Buffer}     data     The content of the template
+    * @param {Function}          callback(err) called when done
+    */
+-  addTemplate : function (fileId, data, callback) {
++  addTemplate: function (fileId, data, callback) {
+     /* if(path.isAbsolute(fileId)===true){  //possible with Node v0.11
+       return callback('The file id should not be an absolute path: '+fileId);
+     }*/
+@@ -106,7 +111,7 @@ var carbone = {
+    * add formatters
+    * @param {Object} formatters {toInt: function(d, args, agrs, ...)}
+    */
+-  addFormatters : function (customFormatters) {
++  addFormatters: function (customFormatters) {
+     for (var f in customFormatters) {
+       carbone.formatters[f] = customFormatters[f];
+     }
+@@ -117,7 +122,7 @@ var carbone = {
+    * @param  {String}   fileId   Unique file name.
+    * @param  {Function} callback(err)
+    */
+-  removeTemplate : function (fileId, callback) {
++  removeTemplate: function (fileId, callback) {
+     var _fullPath = path.join(params.templatePath, fileId);
+     fs.unlink(_fullPath, callback);
+   },
+@@ -127,10 +132,10 @@ var carbone = {
+    * @param  {String} documentType  Must be 'document', 'web', 'graphics', 'spreadsheet', 'presentation'
+    * @return {Array}                List of format
+    */
+-  listConversionFormats : function (documentType) {
++  listConversionFormats: function (documentType) {
+     var _res = [];
+     if (format[documentType] === undefined) {
+-      throw Error('Unknown document type');
++      throw Error("Unknown document type");
+     }
+     var _doc = format[documentType];
+     for (var attr in _doc) {
+@@ -141,7 +146,7 @@ var carbone = {
+     return _res;
+   },
+ 
+-  renderXML : function (xml, data, optionsRaw, callbackRaw) {
++  renderXML: function (xml, data, optionsRaw, callbackRaw) {
+     parseOptions(optionsRaw, callbackRaw, function (options, callback) {
+       return builder.buildXML(xml, data, options, callback);
+     });
+@@ -166,7 +171,7 @@ var carbone = {
+    *                       }
+    * @param {Function}     callbackRaw(err, res, reportName) : Function called after generation with the result
+    */
+-  render : function (templatePath, data, optionsRaw, callbackRaw) {
++  render: function (templatePath, data, optionsRaw, callbackRaw) {
+     parseOptions(optionsRaw, callbackRaw, function (options, callback) {
+       // open the template (unzip if necessary)
+       file.openTemplate(templatePath, function (err, template) {
+@@ -179,13 +184,20 @@ var carbone = {
+         options.extension = optionsRaw.extension || _extension;
+ 
+         if (options.extension === null) {
+-          return callback('Unknown input file type. It should be a docx, xlsx, pptx, odt, ods, odp, xhtml, html or an xml file');
++          return callback(
++            "Unknown input file type. It should be a docx, xlsx, pptx, odt, ods, odp, xhtml, html or an xml file"
++          );
+         }
+-        if (options.extension === options.convertTo && options.hardRefresh === false) {
++        if (
++          options.extension === options.convertTo &&
++          options.hardRefresh === false
++        ) {
+           options.convertTo = null; // avoid calling LibreOffice if the output file type is the same as the input file type
+         }
+         template.reportName = options.reportName;
+         template.extension = options.extension;
++        template.lang = options.lang;
++
+         preprocessor.execute(template, function (err, template) {
+           if (err) {
+             return callback(err, null);
+@@ -196,32 +208,53 @@ var carbone = {
+               return callback(err, null);
+             }
+             // assemble all files and zip if necessary
+-            file.buildFile(report, function (err, result) {
+-              if (err) {
+-                return callback(err, null);
+-              }
+-              if (typeof(options.convertTo) === 'string' && options.convertTo !== '') {
+-                let optionsConvert = {
+-                  extension : options.extension
+-                };
+-                convert(result, options.convertTo, optionsConvert, function (err, result) {
+-                  callback(err, result, report.reportName);
+-                });
+-              }
+-              else if (typeof(options.convertTo) === 'object'
+-                  && options.convertTo !== null
+-                  && typeof(options.convertTo.formatName) === 'string' && options.convertTo.formatName !== '') {
+-                let optionsConvert = {
+-                  formatOptions : options.convertTo.formatOptionsRaw ? options.convertTo.formatOptionsRaw : options.convertTo.formatOptions ? options.convertTo.formatOptions : {},
+-                  extension     : options.extension
+-                };
+-                convert(result, options.convertTo.formatName, optionsConvert, function (err, result) {
+-                  callback(err, result, report.reportName);
+-                });
+-              }
+-              else {
+-                callback(null, result, report.reportName);
+-              }
++            postprocessor.execute(report, function (err, report) {
++              console.log(report.files[3].data);
++              file.buildFile(report, function (err, result) {
++                if (err) {
++                  return callback(err, null);
++                }
++                if (
++                  typeof options.convertTo === "string" &&
++                  options.convertTo !== ""
++                ) {
++                  let optionsConvert = {
++                    extension: options.extension,
++                  };
++                  convert(
++                    result,
++                    options.convertTo,
++                    optionsConvert,
++                    function (err, result) {
++                      callback(err, result, report.reportName);
++                    }
++                  );
++                } else if (
++                  typeof options.convertTo === "object" &&
++                  options.convertTo !== null &&
++                  typeof options.convertTo.formatName === "string" &&
++                  options.convertTo.formatName !== ""
++                ) {
++                  let optionsConvert = {
++                    formatOptions: options.convertTo.formatOptionsRaw
++                      ? options.convertTo.formatOptionsRaw
++                      : options.convertTo.formatOptions
++                      ? options.convertTo.formatOptions
++                      : {},
++                    extension: options.extension,
++                  };
++                  convert(
++                    result,
++                    options.convertTo.formatName,
++                    optionsConvert,
++                    function (err, result) {
++                      callback(err, result, report.reportName);
++                    }
++                  );
++                } else {
++                  callback(null, result, report.reportName);
++                }
++              });
+             });
+           });
+         });
+@@ -234,7 +267,7 @@ var carbone = {
+    * @param {String} filePath File path
+    * @param {Function} callback
+    */
+-  getFileExtension : function (filePath, callback) {
++  getFileExtension: function (filePath, callback) {
+     file.openTemplate(filePath, function (err, template) {
+       if (err) {
+         return callback(err);
+@@ -243,7 +276,7 @@ var carbone = {
+       var ext = file.detectType(template);
+ 
+       if (ext === null) {
+-        return callback('Cannot detect file extension');
++        return callback("Cannot detect file extension");
+       }
+ 
+       return callback(null, ext);
+@@ -265,43 +298,41 @@ var carbone = {
+    *                              }
+    * @param  {Function} callback  (err, result) result is a buffer (file converted)
+    */
+-  convert : function (data, convertTo, options, callback) {
++  convert: function (data, convertTo, options, callback) {
+     convert(data, convertTo, options, callback);
+-  }
+-
+-
++  },
+ };
+ 
+ /** ***************************************************************************************************************/
+ /* Privates methods */
+ /** ***************************************************************************************************************/
+ 
+-function parseOptions (options, callbackFn, callback) {
+-  if (typeof(options) === 'function') {
++function parseOptions(options, callbackFn, callback) {
++  if (typeof options === "function") {
+     callbackFn = options;
+     options = {};
+   }
+   // analyze pre-declared variables in the Object "options"
+   parser.findVariables(options.variableStr, function (err, str, variables) {
+     var _options = {
+-      enum              : options.enum,
+-      currency          : {},
+-      lang              : (options.lang || params.lang).toLowerCase(), // TODO test toLowerCase
+-      translations      : options.translations || params.translations,
+-      complement        : options.complement,
+-      reportName        : options.reportName,
+-      convertTo         : options.convertTo,
+-      extension         : options.extension,
+-      formatters        : carbone.formatters,
+-      existingVariables : variables,
+-      hardRefresh       : options.hardRefresh || false
++      enum: options.enum,
++      currency: {},
++      lang: (options.lang || params.lang).toLowerCase(), // TODO test toLowerCase
++      translations: options.translations || params.translations,
++      complement: options.complement,
++      reportName: options.reportName,
++      convertTo: options.convertTo,
++      extension: options.extension,
++      formatters: carbone.formatters,
++      existingVariables: variables,
++      hardRefresh: options.hardRefresh || false,
+     };
+-    var _currency           = _options.currency;
+-    var _locale             = locale[_options.lang] || locale.en;
++    var _currency = _options.currency;
++    var _locale = locale[_options.lang] || locale.en;
+     var _currencyFromLocale = _locale.currency.code;
+-    _currency.source        = options.currencySource || params.currencySource;
+-    _currency.target        = options.currencyTarget || params.currencyTarget;
+-    _currency.rates         = options.currencyRates  || params.currencyRates;
++    _currency.source = options.currencySource || params.currencySource;
++    _currency.target = options.currencyTarget || params.currencyTarget;
++    _currency.rates = options.currencyRates || params.currencyRates;
+     if (!_currency.source) {
+       _currency.source = _currencyFromLocale;
+     }
+@@ -320,22 +351,26 @@ function parseOptions (options, callbackFn, callback) {
+  * @param  {Integer}  currentIndex currently visited files in the template
+  * @param  {Function} callback(err, template)
+  */
+-function walkFiles (template, data, options, currentIndex, callback) {
++function walkFiles(template, data, options, currentIndex, callback) {
+   if (currentIndex >= template.files.length) {
+     // we have parsed all files, now parse the reportName
+     if (template.reportName !== undefined) {
+-      builder.buildXML(template.reportName, data, options, function (err, reportNameResult) {
+-        template.reportName = reportNameResult;
+-        callback(null, template);
+-      });
+-    }
+-    else {
++      builder.buildXML(
++        template.reportName,
++        data,
++        options,
++        function (err, reportNameResult) {
++          template.reportName = reportNameResult;
++          callback(null, template);
++        }
++      );
++    } else {
+       callback(null, template);
+     }
+     return;
+   }
+   var _file = template.files[currentIndex];
+-  if (_file.isMarked===true) {
++  if (_file.isMarked === true) {
+     builder.buildXML(_file.data, data, options, function (err, xmlResult) {
+       if (err) {
+         return callback(err, template);
+@@ -345,8 +380,7 @@ function walkFiles (template, data, options, currentIndex, callback) {
+         walkFiles(template, data, options, ++currentIndex, callback);
+       });
+     });
+-  }
+-  else {
++  } else {
+     walkFiles(template, data, options, ++currentIndex, callback);
+   }
+ }
+@@ -357,9 +391,9 @@ function walkFiles (template, data, options, currentIndex, callback) {
+  * @param  {String || Object} data
+  * @return {String}
+  */
+-function extractValuesFromOptions (data) {
++function extractValuesFromOptions(data) {
+   // most of the case, there is no options
+-  if (data === '' || data === null || data === undefined) {
++  if (data === "" || data === null || data === undefined) {
+     data = {};
+   }
+   /*
+@@ -368,17 +402,16 @@ function extractValuesFromOptions (data) {
+       Delimiter : '"'
+       Encoding  : UTF-8
+    */
+-  var _optionsArray = [ '44', '34', '76'];
+-  if (typeof(data) === 'string') {
+-    var _dataToArray = data.split(',');
++  var _optionsArray = ["44", "34", "76"];
++  if (typeof data === "string") {
++    var _dataToArray = data.split(",");
+     for (var i = 0; i < _dataToArray.length; i++) {
+       _optionsArray[i] = _dataToArray[i].trim();
+     }
+-  }
+-  else if (typeof(data) === 'object') {
+-    _optionsArray[0] = (data.fieldSeparator || ',').charCodeAt(0);
+-    _optionsArray[1] = (data.textDelimiter  || '"').charCodeAt(0);
+-    _optionsArray[2] = data.characterSet    || '0';
++  } else if (typeof data === "object") {
++    _optionsArray[0] = (data.fieldSeparator || ",").charCodeAt(0);
++    _optionsArray[1] = (data.textDelimiter || '"').charCodeAt(0);
++    _optionsArray[2] = data.characterSet || "0";
+     if (data.numberOfFirstLine) {
+       _optionsArray[3] = data.numberOfFirstLine;
+     }
+@@ -386,7 +419,7 @@ function extractValuesFromOptions (data) {
+       _optionsArray[4] = data.cellFormat;
+     }
+   }
+-  return _optionsArray.join(',');
++  return _optionsArray.join(",");
+ }
+ 
+ /**
+@@ -396,10 +429,12 @@ function extractValuesFromOptions (data) {
+  * @param  {String} extensionOut extension type expected to be converted.
+  * @return {Boolean} Return true if the extensions format are not matching, otherwhise false.
+  */
+-function checkDocTypeAndOutputExtensions (extensionIn, extensionOut) {
++function checkDocTypeAndOutputExtensions(extensionIn, extensionOut) {
+   for (var docType in format) {
+-    if (format[docType][extensionIn] !== undefined
+-        && format[docType][extensionOut] !== undefined) {
++    if (
++      format[docType][extensionIn] !== undefined &&
++      format[docType][extensionOut] !== undefined
++    ) {
+       return docType;
+     }
+   }
+@@ -414,41 +449,52 @@ function checkDocTypeAndOutputExtensions (extensionIn, extensionOut) {
+  *                                formatName', 'formatOptions'}
+  * @param  {Function}        callback(err, data)
+  */
+-function convert (data, convertTo, options, callback) {
+-  if (typeof(options) === 'function') {
++function convert(data, convertTo, options, callback) {
++  if (typeof options === "function") {
+     callback = options;
+     options = {};
+   }
+ 
+   if (!options.extension) {
+-    return callback('options.extension must be set to detect input file type', null);
++    return callback(
++      "options.extension must be set to detect input file type",
++      null
++    );
+   }
+   const docType = checkDocTypeAndOutputExtensions(options.extension, convertTo);
+   if (docType === null) {
+-    return callback(`Format "${options.extension}" can't be converted to "${convertTo}".`);
++    return callback(
++      `Format "${options.extension}" can't be converted to "${convertTo}".`
++    );
+   }
+   var _fileFormatOutput = format[docType][convertTo].format;
+-  var _filePathInput = path.join(params.tempPath, helper.getUID()) + '.' + options.extension;
++  var _filePathInput =
++    path.join(params.tempPath, helper.getUID()) + "." + options.extension;
+   var _formatOptions = extractValuesFromOptions(options.formatOptions);
+ 
+   fs.writeFile(_filePathInput, data, function (err) {
+     if (err) {
+       return callback(err);
+     }
+-    converter.convertFile(_filePathInput, _fileFormatOutput, _formatOptions, function (errConvert, data) {
+-      fs.unlink(_filePathInput, function (err) {
+-        debug('cannot remove file ' + err);
+-      });
+-      callback(errConvert, data);
+-    });
++    converter.convertFile(
++      _filePathInput,
++      _fileFormatOutput,
++      _formatOptions,
++      function (errConvert, data) {
++        fs.unlink(_filePathInput, function (err) {
++          debug("cannot remove file " + err);
++        });
++        callback(errConvert, data);
++      }
++    );
+   });
+ }
+ 
+ // add default formatters
+-carbone.addFormatters(require('../formatters/array.js'));
+-carbone.addFormatters(require('../formatters/condition.js'));
+-carbone.addFormatters(require('../formatters/date.js'));
+-carbone.addFormatters(require('../formatters/number.js'));
+-carbone.addFormatters(require('../formatters/string.js'));
++carbone.addFormatters(require("../formatters/array.js"));
++carbone.addFormatters(require("../formatters/condition.js"));
++carbone.addFormatters(require("../formatters/date.js"));
++carbone.addFormatters(require("../formatters/number.js"));
++carbone.addFormatters(require("../formatters/string.js"));
+ translator.loadTranslations(params.templatePath);
+ module.exports = carbone;
+diff --git lipostprocessor.js lipostprocessor.js
+new file mode 100644
+index 0000000..09edec1
+--- /dev/null
++++ lipostprocessor.js
+@@ -0,0 +1,141 @@
++/* eslint-disable array-callback-return */
++var path = require("path");
++var xml2js = require("xml2js");
++var xpath = require("xml2js-xpath");
++
++var imageprocessor = require('./imageprocessor');
++
++var postprocessor = {
++  /**
++   * Execute preprocessor on main, and embedded document
++   * @param  {Object}   report
++   */
++  execute: function (report, callback) {
++    if (report === null || report.files === undefined) {
++      return callback(null, report);
++    }
++    for (var i = -1; i < report.embeddings.length; i++) {
++      var _mainOrEmbeddedTemplate = report.filename;
++      var _fileType = report.extension;
++      if (i > -1) {
++        // If the current template is an embedded file
++
++        _fileType = path
++          .extname(_mainOrEmbeddedTemplate)
++          .toLowerCase()
++          .slice(1);
++      }
++      switch (_fileType) {
++        case "odt":
++          postprocessor.replaceImageODT(report);
++          break;
++        case "docx":
++          postprocessor.replaceImageDocx(report);
++          break;
++        default:
++          break;
++      }
++    }
++    return callback(null, report);
++  },
++
++  /**
++   * Pre-process image replacement in Docx template
++   * Find all media files and replace the value of dummy images for the carbone tag when it exists. In that case only mark the media file as isMarked to be searched for tags
++   *
++   * @param  {Object} report (modified)
++   * @return {Object}          template
++   */
++  replaceImageDocx: function (report) {
++    let documents = [0];
++    documents[0] = report.files.find((x) => x.name === "word/document.xml");
++    documents = [
++      ...documents,
++      ...report.files.filter((x) => x.name.includes("word/header")),
++    ];
++    documents = [
++      ...documents,
++      ...report.files.filter((x) => x.name.includes("word/footer")),
++    ];
++
++    documents.map((document) => {
++      
++      document = imageprocessor.clearEmptyImages(document);
++
++      xml2js.parseString(document.data, (err, root) => {
++
++        // Find all pic tags in file
++        var matches = xpath.find(root, "//w:drawing").filter(x => x["wp:anchor"][0] !== '');
++
++        let state = [];
++        
++        // For each match
++        matches.map((drawing) => {
++
++          // Find the description tag
++          let match = xpath.find(drawing, "//pic:pic")[0];
++
++          let definition = xpath.find(
++            xpath.find(match, "//pic:nvPicPr")[0],
++            "//pic:cNvPr"
++          )[0].$;
++
++
++          var fullUrl = definition.descr;
++          var dynamic = definition.dynamic;
++
++          if (fullUrl && dynamic) {
++            let result = imageprocessor.processDynamicImage(
++              report,
++              state,
++              document,
++              drawing,
++              match,
++              definition,
++              fullUrl
++            );
++            report = result.report;
++            state = result.state;
++          }
++        });
++      });
++
++      return report;
++    });
++  },
++
++  /**
++   * Pre-process image replacement in ODT template
++   * Find all media files and replace the value of dummy images for the carbone tag when it exists. In that case only mark the media file as isMarked to be searched for tags
++   *
++   * @param  {Object} template (modified)
++   * @return {Object}          template
++   */
++  replaceImageODT: function (template) {
++    let document = template.files.find((x) => x.name === "content.xml");
++
++    xml2js.parseString(document.data, (err, result) => {
++      var matches = xpath.find(result, "//draw:frame");
++
++      matches.map((match, index) => {
++        let desc = match["svg:desc"];
++        if (desc) {
++          xpath.find(match, "//draw:image")[0].$["xlink:href"] = undefined;
++          xpath.find(match, "//draw:image")[0].$["loext:mime-type"] = undefined;
++
++          let url = desc[0];
++          desc[0] = index;
++
++          xpath.find(match, "//draw:image")[0]["office:binary-data"] = [url];
++
++          let builder = new xml2js.Builder();
++          document.data = builder.buildObject(result);
++        }
++      });
++    });
++
++    return template;
++  },
++};
++
++module.exports = postprocessor;
+diff --git lipreprocessor.js lipreprocessor.js
+index 7e4a055..e464470 100644
+--- lipreprocessor.js
++++ lipreprocessor.js
+@@ -1,36 +1,49 @@
+-var path  = require('path');
+-var helper = require('./helper');
+-
++/* eslint-disable array-callback-return */
++var path = require("path");
++var helper = require("./helper");
++var xml2js = require("xml2js");
++var xpath = require("xml2js-xpath");
+ 
+ var preprocessor = {
+-
+   /**
+    * Execute preprocessor on main, and embedded document
+    * @param  {Object}   template
+    * @param  {Function} callback
+    */
+-  execute : function (template, callback) {
++  execute: function (template, callback) {
+     if (template === null || template.files === undefined) {
+       return callback(null, template);
+     }
+     for (var i = -1; i < template.embeddings.length; i++) {
+       var _mainOrEmbeddedTemplate = template.filename;
+-      var _parentFilter = '';
++      var _parentFilter = "";
+       var _fileType = template.extension;
+       if (i > -1) {
+         // If the current template is an embedded file
+         _mainOrEmbeddedTemplate = _parentFilter = template.embeddings[i];
+-        _fileType = path.extname(_mainOrEmbeddedTemplate).toLowerCase().slice(1);
++        _fileType = path
++          .extname(_mainOrEmbeddedTemplate)
++          .toLowerCase()
++          .slice(1);
+       }
+       switch (_fileType) {
+-        case 'xlsx':
+-          preprocessor.convertSharedStringToInlineString(template, _parentFilter);
++        case "xlsx":
++          preprocessor.convertSharedStringToInlineString(
++            template,
++            _parentFilter
++          );
+           break;
+-        case 'ods':
++        case "ods":
+           preprocessor.convertNumberMarkersIntoNumericFormat(template);
+           break;
+-        case 'odt':
++        case "odt":
+           preprocessor.removeSoftPageBreak(template);
++          preprocessor.replateLocaleTagsODT(template);
++          break;
++        case "docx":
++          preprocessor.processImages(template);
++          preprocessor.processQrcodes(template);
++          preprocessor.replateLocaleTagsDocx(template);
+           break;
+         default:
+           break;
+@@ -39,6 +52,124 @@ var preprocessor = {
+     return callback(null, template);
+   },
+ 
++  processQrcodes: function (template) {
++    let documents = [0];
++    documents[0] = template.files.find((x) => x.name === "word/document.xml");
++    documents = [
++      ...documents,
++      ...template.files.filter((x) => x.name.includes("word/header")),
++    ];
++    documents = [
++      ...documents,
++      ...template.files.filter((x) => x.name.includes("word/footer")),
++    ];
++
++    documents.map((document) => {
++      xml2js.parseString(document.data, (err, result) => {
++        // Find all pic tags in file
++        var matches = xpath.find(result, "//pic:pic");
++
++        // For each match
++        matches.map((match) => {
++          // Find the description tag
++          let definition = xpath.find(
++            xpath.find(match, "//pic:nvPicPr")[0],
++            "//pic:cNvPr"
++          )[0].$;
++          var fullUrl = definition.descr;
++
++          if (fullUrl.includes("#qrcode")) {
++            document.data = document.data.split("#qrcode").join("");
++            document.data = document.data
++              .split('name="' + definition.name + '"')
++              .join('name="' + definition.name + '" qrcode="true"');
++          }
++        });
++      });
++    });
++
++    return template;
++  },
++
++  processImages: function (template) {
++    let documents = [0];
++    documents[0] = template.files.find((x) => x.name === "word/document.xml");
++    documents = [
++      ...documents,
++      ...template.files.filter((x) => x.name.includes("word/header")),
++    ];
++    documents = [
++      ...documents,
++      ...template.files.filter((x) => x.name.includes("word/footer")),
++    ];
++
++    documents.map((document) => {
++      xml2js.parseString(document.data, (err, result) => {
++        // Find all pic tags in file
++        var matches = xpath.find(result, "//pic:pic");
++
++        // For each match
++        matches.map((match) => {
++          // Find the description tag
++          let definition = xpath.find(
++            xpath.find(match, "//pic:nvPicPr")[0],
++            "//pic:cNvPr"
++          )[0].$;
++
++          var fullUrl = definition.descr;
++
++          if (fullUrl.includes("#contains")) {
++            document.data = document.data.split("#contains").join("");
++            document.data = document.data
++              .split('name="' + definition.name + '"')
++              .join('name="' + definition.name + '" contains="true" dynamic="true"');
++          } else if (fullUrl.includes("{")) {
++            document.data = document.data
++              .split('name="' + definition.name + '"')
++              .join('name="' + definition.name + '" dynamic="true"');
++          }
++        });
++      });
++    });
++
++    return template;
++  },
++
++  /**
++   * Pre-process template to remove all Locale and replace them for the language
++   * Find all media files and replace the value of dummy images for the carbone tag when it exists. In that case only mark the media file as isMarked to be searched for tags
++   *
++   * @param  {Object} template (modified)
++   * @return {Object}          template
++   */
++  replateLocaleTagsDocx: function (template) {
++    let document = template.files.find((x) => x.name === "word/document.xml");
++
++    if (template.lang) {
++      console.log("language: ", template.lang);
++      document.data = document.data.split("LOCALE").join(template.lang);
++    }
++
++    return template;
++  },
++
++  /**
++   * Pre-process template to remove all Locale and replace them for the language
++   * Find all media files and replace the value of dummy images for the carbone tag when it exists. In that case only mark the media file as isMarked to be searched for tags
++   *
++   * @param  {Object} template (modified)
++   * @return {Object}          template
++   */
++  replateLocaleTagsODT: function (template) {
++    let document = template.files.find((x) => x.name === "content.xml");
++
++    if (template.lang) {
++      document.data = document.data.replace("LOCALE", template.lang);
++    }
++
++    return template;
++  },
++
+   /**
+    * Remove soft page break in ODT document as we modify them
+    *
+@@ -50,14 +181,14 @@ var preprocessor = {
+    * @param  {Object} template (modified)
+    * @return {Object}          template
+    */
+-  removeSoftPageBreak : function (template) {
++  removeSoftPageBreak: function (template) {
+     for (var i = 0; i < template.files.length; i++) {
+       var _file = template.files[i];
+       if (/content\.xml$/.test(_file.name) === true) {
+         _file.data = _file.data
+-          .replace(/text:use-soft-page-breaks="true"/g, '')
+-          .replace(/<text:soft-page-break\/>/g, '')
+-          .replace(/<text:soft-page-break><\/text:soft-page-break>/g, '');
++          .replace(/text:use-soft-page-breaks="true"/g, "")
++          .replace(/<text:soft-page-break\/>/g, "")
++          .replace(/<text:soft-page-break><\/text:soft-page-break>/g, "");
+         return template;
+       }
+     }
+@@ -70,7 +201,7 @@ var preprocessor = {
+    * @param  {String} parentFilter apply the transformation on a specific embedded file
+    * @return {Object}              the modified template
+    */
+-  convertSharedStringToInlineString : function (template, parentFilter) {
++  convertSharedStringToInlineString: function (template, parentFilter) {
+     var _sharedStrings = [];
+     var _filesToConvert = [];
+     var _sharedStringIndex = -1;
+@@ -81,9 +212,8 @@ var preprocessor = {
+         if (/sharedStrings\.xml$/.test(_file.name) === true) {
+           _sharedStringIndex = i;
+           _sharedStrings = preprocessor.readSharedString(_file.data);
+-        }
+-        else if (/\.xml$/.test(_file.name) === true) {
+-          if (_file.name.indexOf('sheet') !== -1) {
++        } else if (/\.xml$/.test(_file.name) === true) {
++          if (_file.name.indexOf("sheet") !== -1) {
+             _filesToConvert.push(_file);
+           }
+         }
+@@ -107,21 +237,28 @@ var preprocessor = {
+    * @param  {String} parentFilter         filter to modify only an embedded document
+    * @return {}                            it modifies the template directly
+    */
+-  removeOneFile : function (template, indexOfFileToRemove, parentFilter) {
+-    if (indexOfFileToRemove < 0 || indexOfFileToRemove >= template.files.length) {
++  removeOneFile: function (template, indexOfFileToRemove, parentFilter) {
++    if (
++      indexOfFileToRemove < 0 ||
++      indexOfFileToRemove >= template.files.length
++    ) {
+       return;
+     }
+     var _fileToRemove = template.files[indexOfFileToRemove];
+-    var _dirname  = path.dirname(_fileToRemove.name);
++    var _dirname = path.dirname(_fileToRemove.name);
+     var _basename = path.basename(_fileToRemove.name);
+     template.files.splice(indexOfFileToRemove, 1);
+     for (var i = 0; i < template.files.length; i++) {
+       var _file = template.files[i];
+       if (_file.parent === parentFilter) {
+         // remove relations
+-        if (_dirname + '/_rels/workbook.xml.rels' === _file.name) {
+-          var _regExp = new RegExp('<Relationship [^>]*Target="' + helper.regexEscape(_basename) + '"[^>]*/>');
+-          _file.data = _file.data.replace(_regExp, '');
++        if (_dirname + "/_rels/workbook.xml.rels" === _file.name) {
++          var _regExp = new RegExp(
++            '<Relationship [^>]*Target="' +
++              helper.regexEscape(_basename) +
++              '"[^>]*/>'
++          );
++          _file.data = _file.data.replace(_regExp, "");
+         }
+       }
+     }
+@@ -132,12 +269,12 @@ var preprocessor = {
+    * @param  {String} sharedStringXml shared string content
+    * @return {Array}                  array
+    */
+-  readSharedString : function (sharedStringXml) {
++  readSharedString: function (sharedStringXml) {
+     var _sharedStrings = [];
+     if (sharedStringXml === null || sharedStringXml === undefined) {
+       return _sharedStrings;
+     }
+-    var _tagRegex = new RegExp('<si>(.+?)</si>','g');
++    var _tagRegex = new RegExp("<si>(.+?)</si>", "g");
+     var _tag = _tagRegex.exec(sharedStringXml);
+     while (_tag !== null) {
+       _sharedStrings.push(_tag[1]);
+@@ -152,37 +289,44 @@ var preprocessor = {
+    * @param  {Array} sharedStrings  shared string
+    * @return {String}               updated xml
+    */
+-  convertToInlineString : function (xml, sharedStrings) {
+-    if (typeof(xml) !== 'string') {
++  convertToInlineString: function (xml, sharedStrings) {
++    if (typeof xml !== "string") {
+       return xml;
+     }
+     // find all tags which have attribute t="s" (type = shared string)
+-    var _inlinedXml = xml.replace(/(<(\w)[^>]*t="s"[^>]*>)(.*?)(<\/\2>)/g, function (m, openTag, tagName, content, closeTag) {
+-      var _newXml = '';
+-      // get the index of shared string
+-      var _tab = /<v>(\d+?)<\/v>/.exec(content);
+-      if (_tab instanceof Array && _tab.length > 0) {
+-        // replace the index by the string
+-        var _sharedStringIndex = parseInt(_tab[1], 10);
+-        var _selectedSharedString = sharedStrings[_sharedStringIndex];
+-        const _contentAsNumber = /{[d|c][.].*:formatN\(.*\)}/.exec(_selectedSharedString);
+-        if (_contentAsNumber instanceof Array && _tab.length > 0) {
+-          // Convert the marker into number cell type when it using the ':formatN' formatter
+-          _selectedSharedString = _contentAsNumber[0].replace(/:formatN\(.*\)/, '');
+-          _newXml = openTag.replace('t="s"', 't="n"');
+-          _newXml += '<v>' + _selectedSharedString + '</v>';
+-        }
+-        else {
+-          // change type of tag to "inline string"
+-          _newXml = openTag.replace('t="s"', 't="inlineStr"');
+-          _newXml += '<is>' + _selectedSharedString + '</is>';
++    var _inlinedXml = xml.replace(
++      /(<(\w)[^>]*t="s"[^>]*>)(.*?)(<\/\2>)/g,
++      function (m, openTag, tagName, content, closeTag) {
++        var _newXml = "";
++        // get the index of shared string
++        var _tab = /<v>(\d+?)<\/v>/.exec(content);
++        if (_tab instanceof Array && _tab.length > 0) {
++          // replace the index by the string
++          var _sharedStringIndex = parseInt(_tab[1], 10);
++          var _selectedSharedString = sharedStrings[_sharedStringIndex];
++          const _contentAsNumber = /{[d|c][.].*:formatN\(.*\)}/.exec(
++            _selectedSharedString
++          );
++          if (_contentAsNumber instanceof Array && _tab.length > 0) {
++            // Convert the marker into number cell type when it using the ':formatN' formatter
++            _selectedSharedString = _contentAsNumber[0].replace(
++              /:formatN\(.*\)/,
++              ""
++            );
++            _newXml = openTag.replace('t="s"', 't="n"');
++            _newXml += "<v>" + _selectedSharedString + "</v>";
++          } else {
++            // change type of tag to "inline string"
++            _newXml = openTag.replace('t="s"', 't="inlineStr"');
++            _newXml += "<is>" + _selectedSharedString + "</is>";
++          }
++          _newXml += closeTag;
++          return _newXml;
+         }
+-        _newXml += closeTag;
+-        return _newXml;
++        // if something goes wrong, do nothing
++        return m;
+       }
+-      // if something goes wrong, do nothing
+-      return m;
+-    });
++    );
+     return _inlinedXml;
+   },
+ 
+@@ -192,15 +336,17 @@ var preprocessor = {
+    * @param  {String} xml sheet
+    * @return {String}     sheet updated
+    */
+-  removeRowCounterInWorksheet : function (xml) {
+-    if (typeof(xml) !== 'string') {
++  removeRowCounterInWorksheet: function (xml) {
++    if (typeof xml !== "string") {
+       return xml;
+     }
+-    return xml.replace(/<(?:c|row)[^>]*\s(r="\S+")[^>]*>/g, function (m, rowValue) {
+-      return m.replace(rowValue, '');
+-    }).replace(/<(?:c|row)[^>]*(spans="\S+")[^>]*>/g, function (m, rowValue) {
+-      return m.replace(rowValue, '');
+-    });
++    return xml
++      .replace(/<(?:c|row)[^>]*\s(r="\S+")[^>]*>/g, function (m, rowValue) {
++        return m.replace(rowValue, "");
++      })
++      .replace(/<(?:c|row)[^>]*(spans="\S+")[^>]*>/g, function (m, rowValue) {
++        return m.replace(rowValue, "");
++      });
+   },
+ 
+   /**
+@@ -209,24 +355,37 @@ var preprocessor = {
+    * @param {Object} template
+    * @return
+    */
+-  convertNumberMarkersIntoNumericFormat : function (template) {
+-    const _contentFileId = template.files.findIndex(x => x.name === 'content.xml');
++  convertNumberMarkersIntoNumericFormat: function (template) {
++    const _contentFileId = template.files.findIndex(
++      (x) => x.name === "content.xml"
++    );
+     if (_contentFileId > -1 && !!template.files[_contentFileId] === true) {
+-      template.files[_contentFileId].data = template.files[_contentFileId].data.replace(/<table:table-cell[^<]*>\s*<text:p>[^<]*formatN[^<]*<\/text:p>\s*<\/table:table-cell>/g, function (xml) {
+-        const _markers = xml.match(/(\{[^{]+?\})/g);
+-        // we cannot convert to number of there are multiple markers in the same cell
+-        if (_markers.length !== 1) {
++      template.files[_contentFileId].data = template.files[
++        _contentFileId
++      ].data.replace(
++        /<table:table-cell[^<]*>\s*<text:p>[^<]*formatN[^<]*<\/text:p>\s*<\/table:table-cell>/g,
++        function (xml) {
++          const _markers = xml.match(/(\{[^{]+?\})/g);
++          // we cannot convert to number of there are multiple markers in the same cell
++          if (_markers.length !== 1) {
++            return xml;
++          }
++          const _marker = _markers[0].replace(/:formatN\(.*\)/, "");
++          xml = xml.replace(/:formatN\(.*\)/, "");
++          xml = xml.replace(
++            /office:value-type="string"/,
++            `office:value-type="float" office:value="${_marker}"`
++          );
++          xml = xml.replace(
++            /calcext:value-type="string"/,
++            'calcext:value-type="float"'
++          );
+           return xml;
+         }
+-        const _marker = _markers[0].replace(/:formatN\(.*\)/, '');
+-        xml = xml.replace(/:formatN\(.*\)/, '');
+-        xml = xml.replace(/office:value-type="string"/, `office:value-type="float" office:value="${_marker}"`);
+-        xml = xml.replace(/calcext:value-type="string"/, 'calcext:value-type="float"');
+-        return xml;
+-      });
++      );
+     }
+     return template;
+-  }
++  },
+ };
+ 
+-module.exports = preprocessor;
+\ No newline at end of file
++module.exports = preprocessor;
+diff --git liprintgenericfields.js liprintgenericfields.js
+new file mode 100644
+index 0000000..adcd198
+--- /dev/null
++++ liprintgenericfields.js
+@@ -0,0 +1,70 @@
++
++const moment = require("moment");
++const get = require("lodash/get");
++
++var printgenericfields = {
++  print: function (field, value, locale) {
++    let result = "";
++    if (Array.isArray(value)) {
++      if (field.operator) {
++        result = this.applyOperator(value, field.operator);
++      } else {
++        let values = [];
++        value.map((item) => {
++          values.push(this.print(field, item, locale));
++        });
++        result = values.join(", ");
++      }
++    } else {
++      // boolean
++      if (typeof value === "boolean") {
++        result = value ? "✓" : "✗";
++      }
++      // normal
++      else {
++        result = this.format(field.format, value, locale);
++      }
++    }
++
++    return result;
++  },
++  format(format, value, locale) {
++    if (format) {
++      if (format.includes("LOCALE")) {
++        format = format.split("LOCALE").join(locale);
++      }
++
++      switch (format) {
++        case "date":
++          value = moment(value).format("YYYY/MM/DD");
++          break;
++        case "datetime":
++          value = moment(value).format("YYYY/MM/DD HH:mm");
++          break;
++        case "tuple":
++           value = value.label[locale] + ': ' + value.value;
++           break;
++        default:
++          value = get(value, format);
++          break;
++      }
++    }
++    return value;
++  },
++  applyOperator(array, operator) {
++    if (operator) {
++      switch (operator) {
++        case "count":
++          return array.length;
++        case "max":
++          return Math.max(...array);
++        case "min":
++          return Math.min(...array);
++        case "sum":
++          return array.reduce((a, b) => a + b, 0);
++      }
++    }
++  },
++};
++
++module.exports = printgenericfields;
+diff --git package-lock.json package-lock.json
+new file mode 100644
+index 0000000..77e3ed6
+--- /dev/null
++++ package-lock.json
+@@ -0,0 +1,2432 @@
++{
++  "name": "@keepsolutions/carbone",
++  "version": "2.1.1-5",
++  "lockfileVersion": 1,
++  "requires": true,
++  "dependencies": {
++    "@babel/code-frame": {
++      "version": "7.10.4",
++      "resolved": "https://registry.npmjs.org/@babel/code-frame/-/code-frame-7.10.4.tgz",
++      "integrity": "sha512-vG6SvB6oYEhvgisZNFRmRCUkLz11c7rp+tbNTynGqc6mS1d5ATd/sGyV6W0KZZnXRKMTzZDRgQT3Ou9jhpAfUg==",
++      "dev": true,
++      "requires": {
++        "@babel/highlight": "^7.10.4"
++      }
++    },
++    "@babel/helper-validator-identifier": {
++      "version": "7.10.4",
++      "resolved": "https://registry.npmjs.org/@babel/helper-validator-identifier/-/helper-validator-identifier-7.10.4.tgz",
++      "integrity": "sha512-3U9y+43hz7ZM+rzG24Qe2mufW5KhvFg/NhnNph+i9mgCtdTCtMJuI1TMkrIUiK7Ix4PYlRF9I5dhqaLYADXw==",
++      "dev": true
++    },
++    "@babel/highlight": {
++      "version": "7.10.4",
++      "resolved": "https://registry.npmjs.org/@babel/highlight/-/highlight-7.10.4.tgz",
++      "integrity": "sha512-i6rgnR/YgPEQzZZnbTHHuZdlE8qyoBNalD6F+q4vAFlcMEcqmkoG+mPqJYJCo63qPf74+Y1UZsl3l6f7/RIkmA==",
++      "dev": true,
++      "requires": {
++        "@babel/helper-validator-identifier": "^7.10.4",
++        "chalk": "^2.0.0",
++        "js-tokens": "^4.0.0"
++      },
++      "dependencies": {
++        "ansi-styles": {
++          "version": "3.2.1",
++          "resolved": "https://registry.npmjs.org/ansi-styles/-/ansi-styles-3.2.1.tgz",
++          "integrity": "sha512-VT0ZI6kZRdTh8YyJw3SMbYm/u+NqfsAxEpWO0Pf9sq8/e94WxxOpPKx9FR1FlyCtOVDNOQ+8ntlqFxiRc+r5qA==",
++          "dev": true,
++          "requires": {
++            "color-convert": "^1.9.0"
++          }
++        },
++        "chalk": {
++          "version": "2.4.2",
++          "resolved": "https://registry.npmjs.org/chalk/-/chalk-2.4.2.tgz",
++          "integrity": "sha512-Mti+f9lpJNcwF4tWV8/OrTTtF1gZi+f8FqlyAdouralcFWFQWF2+NgCHShjkCb+IFBLq9buZwE1xckQU4peSuQ==",
++          "dev": true,
++          "requires": {
++            "ansi-styles": "^3.2.1",
++            "escape-string-regexp": "^1.0.5",
++            "supports-color": "^5.3.0"
++          }
++        },
++        "color-convert": {
++          "version": "1.9.3",
++          "resolved": "https://registry.npmjs.org/color-convert/-/color-convert-1.9.3.tgz",
++          "integrity": "sha512-QfAUtd+vFdAtFQcC8CCyYt1fYWxSqAiK2cSD6zDB8N3cpsEBAvRxp9zOGg6G/SHHJYAT88/az/IuDGALsNVbGg==",
++          "dev": true,
++          "requires": {
++            "color-name": "1.1.3"
++          }
++        },
++        "color-name": {
++          "version": "1.1.3",
++          "resolved": "https://registry.npmjs.org/color-name/-/color-name-1.1.3.tgz",
++          "integrity": "sha1-p9BVi9icQveV3UIyj3QIMcpTvCU=",
++          "dev": true
++        },
++        "supports-color": {
++          "version": "5.5.0",
++          "resolved": "https://registry.npmjs.org/supports-color/-/supports-color-5.5.0.tgz",
++          "integrity": "sha512-QjVjwdXIt408MIiAqCX4oUKsgU2EqAGzs2Ppkm4aQYbjm+ZEWEcW4SfFNTr4uMNZma0ey4f5lgLrkB0aX0QMow==",
++          "dev": true,
++          "requires": {
++            "has-flag": "^3.0.0"
++          }
++        }
++      }
++    },
++    "acorn": {
++      "version": "7.4.1",
++      "resolved": "https://registry.npmjs.org/acorn/-/acorn-7.4.1.tgz",
++      "integrity": "sha512-nQyp0o1/mNdbTO1PO6kHkwSrmgZ0MT/jCCpNiwbUjGoRN4dlBhqJtoQuCnEOKzgTVwg0ZWiCoQy6SxMebQVh8A==",
++      "dev": true
++    },
++    "acorn-jsx": {
++      "version": "5.3.1",
++      "resolved": "https://registry.npmjs.org/acorn-jsx/-/acorn-jsx-5.3.1.tgz",
++      "integrity": "sha512-K0Ptm/47OKfQRpNQ2J/oIN/3QYiK6FwW+eJbILhsdxh2WTLdl+30o8aGdTbm5JbffpFFAg/g+zi1E+jvJha5ng==",
++      "dev": true
++    },
++    "ajv": {
++      "version": "6.12.6",
++      "resolved": "https://registry.npmjs.org/ajv/-/ajv-6.12.6.tgz",
++      "integrity": "sha512-j3fVLgvTo527anyYyJOGTYJbG+vnnQYvE0m5mmkc1TK+nxAppkCLMIL0aZ4dblVCNoGShhm+kzE4ZUykBoMg4g==",
++      "dev": true,
++      "requires": {
++        "fast-deep-equal": "^3.1.1",
++        "fast-json-stable-stringify": "^2.0.0",
++        "json-schema-traverse": "^0.4.1",
++        "uri-js": "^4.2.2"
++      }
++    },
++    "ansi-colors": {
++      "version": "4.1.1",
++      "resolved": "https://registry.npmjs.org/ansi-colors/-/ansi-colors-4.1.1.tgz",
++      "integrity": "sha512-JoX0apGbHaUJBNl6yF+p6JAFYZ666/hhCGKN5t9QFjbJQKUU/g8MNbFDbvfrgKXvI1QpZplPOnwIo99lX/AAmA==",
++      "dev": true
++    },
++    "ansi-regex": {
++      "version": "2.1.1",
++      "resolved": "https://registry.npmjs.org/ansi-regex/-/ansi-regex-2.1.1.tgz",
++      "integrity": "sha1-w7M6te42DYbg5ijwRorn7yfWVN8="
++    },
++    "ansi-styles": {
++      "version": "2.2.1",
++      "resolved": "https://registry.npmjs.org/ansi-styles/-/ansi-styles-2.2.1.tgz",
++      "integrity": "sha1-tDLdM1i2NM914eRmQ2gkBTPB3b4="
++    },
++    "anymatch": {
++      "version": "3.1.1",
++      "resolved": "https://registry.npmjs.org/anymatch/-/anymatch-3.1.1.tgz",
++      "integrity": "sha512-mM8522psRCqzV+6LhomX5wgp25YVibjh8Wj23I5RPkPppSVSjyKD2A2mBJmWGa+KN7f2D6LNh9jkBCeyLktzjg==",
++      "dev": true,
++      "requires": {
++        "normalize-path": "^3.0.0",
++        "picomatch": "^2.0.4"
++      }
++    },
++    "argparse": {
++      "version": "1.0.10",
++      "resolved": "https://registry.npmjs.org/argparse/-/argparse-1.0.10.tgz",
++      "integrity": "sha512-o5Roy6tNG4SL/FOkCAN6RzjiakZS25RLYFrcMttJqbdd8BWrnA+fGz57iN5Pb06pvBGvl5gQ0B48dJlslXvoTg==",
++      "dev": true,
++      "requires": {
++        "sprintf-js": "~1.0.2"
++      }
++    },
++    "array.prototype.map": {
++      "version": "1.0.2",
++      "resolved": "https://registry.npmjs.org/array.prototype.map/-/array.prototype.map-1.0.2.tgz",
++      "integrity": "sha512-Az3OYxgsa1g7xDYp86l0nnN4bcmuEITGe1rbdEBVkrqkzMgDcbdQ2R7r41pNzti+4NMces3H8gMmuioZUilLgw==",
++      "dev": true,
++      "requires": {
++        "define-properties": "^1.1.3",
++        "es-abstract": "^1.17.0-next.1",
++        "es-array-method-boxes-properly": "^1.0.0",
++        "is-string": "^1.0.4"
++      }
++    },
++    "astral-regex": {
++      "version": "1.0.0",
++      "resolved": "https://registry.npmjs.org/astral-regex/-/astral-regex-1.0.0.tgz",
++      "integrity": "sha512-+Ryf6g3BKoRc7jfp7ad8tM4TtMiaWvbF/1/sQcZPkkS7ag3D5nMBCe2UfOTONtAkaG0tO0ij3C5Lwmf1EiyjHg==",
++      "dev": true
++    },
++    "balanced-match": {
++      "version": "1.0.0",
++      "resolved": "https://registry.npmjs.org/balanced-match/-/balanced-match-1.0.0.tgz",
++      "integrity": "sha1-ibTRmasr7kneFk6gK4nORi1xt2c=",
++      "dev": true
++    },
++    "base64-js": {
++      "version": "1.3.1",
++      "resolved": "https://registry.npmjs.org/base64-js/-/base64-js-1.3.1.tgz",
++      "integrity": "sha512-mLQ4i2QO1ytvGWFWmcngKO//JXAQueZvwEKtjgQFM4jIK0kU+ytMfplL8j+n5mspOfjHwoAg+9yhb7BwAHm36g=="
++    },
++    "binary-extensions": {
++      "version": "2.1.0",
++      "resolved": "https://registry.npmjs.org/binary-extensions/-/binary-extensions-2.1.0.tgz",
++      "integrity": "sha512-1Yj8h9Q+QDF5FzhMs/c9+6UntbD5MkRfRwac8DoEm9ZfUBZ7tZ55YcGVAzEe4bXsdQHEk+s9S5wsOKVdZrw0tQ==",
++      "dev": true
++    },
++    "brace-expansion": {
++      "version": "1.1.11",
++      "resolved": "https://registry.npmjs.org/brace-expansion/-/brace-expansion-1.1.11.tgz",
++      "integrity": "sha512-iCuPHDFgrHX7H2vEI/5xpz07zSHB00TpugqhmYtVmMO6518mCuRMoOYFldEBl0g187ufozdaHgWKcYFb61qGiA==",
++      "dev": true,
++      "requires": {
++        "balanced-match": "^1.0.0",
++        "concat-map": "0.0.1"
++      }
++    },
++    "braces": {
++      "version": "3.0.2",
++      "resolved": "https://registry.npmjs.org/braces/-/braces-3.0.2.tgz",
++      "integrity": "sha512-b8um+L1RzM3WDSzvhm6gIz1yfTbBt6YTlcEKAvsmqCZZFw46z626lVj9j1yEPW33H5H+lBQpZMP1k8l+78Ha0A==",
++      "dev": true,
++      "requires": {
++        "fill-range": "^7.0.1"
++      }
++    },
++    "browser-stdout": {
++      "version": "1.3.1",
++      "resolved": "https://registry.npmjs.org/browser-stdout/-/browser-stdout-1.3.1.tgz",
++      "integrity": "sha512-qhAVI1+Av2X7qelOfAIYwXONood6XlZE/fXaBSmW/T5SzLAmCgzi+eiWE7fUvbHaeNBQH13UftjpXxsfLkMpgw==",
++      "dev": true
++    },
++    "buffer": {
++      "version": "5.7.0",
++      "resolved": "https://registry.npmjs.org/buffer/-/buffer-5.7.0.tgz",
++      "integrity": "sha512-cd+5r1VLBwUqTrmnzW+D7ABkJUM6mr7uv1dv+6jRw4Rcl7tFIFHDqHPL98LhpGFn3dbAt3gtLxtrWp4m1kFrqg==",
++      "requires": {
++        "base64-js": "^1.3.1",
++        "ieee754": "^1.1.13"
++      }
++    },
++    "buffer-alloc": {
++      "version": "1.2.0",
++      "resolved": "https://registry.npmjs.org/buffer-alloc/-/buffer-alloc-1.2.0.tgz",
++      "integrity": "sha512-CFsHQgjtW1UChdXgbyJGtnm+O/uLQeZdtbDo8mfUgYXCHSM1wgrVxXm6bSyrUuErEb+4sYVGCzASBRot7zyrow==",
++      "requires": {
++        "buffer-alloc-unsafe": "^1.1.0",
++        "buffer-fill": "^1.0.0"
++      }
++    },
++    "buffer-alloc-unsafe": {
++      "version": "1.1.0",
++      "resolved": "https://registry.npmjs.org/buffer-alloc-unsafe/-/buffer-alloc-unsafe-1.1.0.tgz",
++      "integrity": "sha512-TEM2iMIEQdJ2yjPJoSIsldnleVaAk1oW3DBVUykyOLsEsFmEc9kn+SFFPz+gl54KQNxlDnAwCXosOS9Okx2xAg=="
++    },
++    "buffer-crc32": {
++      "version": "0.2.13",
++      "resolved": "https://registry.npmjs.org/buffer-crc32/-/buffer-crc32-0.2.13.tgz",
++      "integrity": "sha1-DTM+PwDqxQqhRUq9MO+MKl2ackI="
++    },
++    "buffer-fill": {
++      "version": "1.0.0",
++      "resolved": "https://registry.npmjs.org/buffer-fill/-/buffer-fill-1.0.0.tgz",
++      "integrity": "sha1-+PeLdniYiO858gXNY39o5wISKyw="
++    },
++    "buffer-from": {
++      "version": "1.1.1",
++      "resolved": "https://registry.npmjs.org/buffer-from/-/buffer-from-1.1.1.tgz",
++      "integrity": "sha512-MQcXEUbCKtEo7bhqEs6560Hyd4XaovZlO/k9V3hjVUF/zwW7KBVdSK4gIt/bzwS9MbR5qob+F5jusZsb0YQK2A=="
++    },
++    "callsites": {
++      "version": "3.1.0",
++      "resolved": "https://registry.npmjs.org/callsites/-/callsites-3.1.0.tgz",
++      "integrity": "sha512-P8BjAsXvZS+VIDUI11hHCQEv74YT67YUi5JJFNWIqL235sBmjX4+qx9Muvls5ivyNENctx46xQLQ3aTuE7ssaQ==",
++      "dev": true
++    },
++    "camelcase": {
++      "version": "5.3.1",
++      "resolved": "https://registry.npmjs.org/camelcase/-/camelcase-5.3.1.tgz",
++      "integrity": "sha512-L28STB170nwWS63UjtlEOE3dldQApaJXZkOI1uMFfzf3rRuPegHaHesyee+YxQ+W6SvRDQV6UrdOdRiR153wJg=="
++    },
++    "chalk": {
++      "version": "1.1.3",
++      "resolved": "https://registry.npmjs.org/chalk/-/chalk-1.1.3.tgz",
++      "integrity": "sha1-qBFcVeSnAv5NFQq9OHKCKn4J/Jg=",
++      "requires": {
++        "ansi-styles": "^2.2.1",
++        "escape-string-regexp": "^1.0.2",
++        "has-ansi": "^2.0.0",
++        "strip-ansi": "^3.0.0",
++        "supports-color": "^2.0.0"
++      }
++    },
++    "chokidar": {
++      "version": "3.4.2",
++      "resolved": "https://registry.npmjs.org/chokidar/-/chokidar-3.4.2.tgz",
++      "integrity": "sha512-IZHaDeBeI+sZJRX7lGcXsdzgvZqKv6sECqsbErJA4mHWfpRrD8B97kSFN4cQz6nGBGiuFia1MKR4d6c1o8Cv7A==",
++      "dev": true,
++      "requires": {
++        "anymatch": "~3.1.1",
++        "braces": "~3.0.2",
++        "fsevents": "~2.1.2",
++        "glob-parent": "~5.1.0",
++        "is-binary-path": "~2.1.0",
++        "is-glob": "~4.0.1",
++        "normalize-path": "~3.0.0",
++        "readdirp": "~3.4.0"
++      }
++    },
++    "cliui": {
++      "version": "7.0.3",
++      "resolved": "https://registry.npmjs.org/cliui/-/cliui-7.0.3.tgz",
++      "integrity": "sha512-Gj3QHTkVMPKqwP3f7B4KPkBZRMR9r4rfi5bXFpg1a+Svvj8l7q5CnkBkVQzfxT5DFSsGk2+PascOgL0JYkL2kw==",
++      "requires": {
++        "string-width": "^4.2.0",
++        "strip-ansi": "^6.0.0",
++        "wrap-ansi": "^7.0.0"
++      },
++      "dependencies": {
++        "ansi-regex": {
++          "version": "5.0.0",
++          "resolved": "https://registry.npmjs.org/ansi-regex/-/ansi-regex-5.0.0.tgz",
++          "integrity": "sha512-bY6fj56OUQ0hU1KjFNDQuJFezqKdrAyFdIevADiqrWHwSlbmBNMHp5ak2f40Pm8JTFyM2mqxkG6ngkHO11f/lg=="
++        },
++        "strip-ansi": {
++          "version": "6.0.0",
++          "resolved": "https://registry.npmjs.org/strip-ansi/-/strip-ansi-6.0.0.tgz",
++          "integrity": "sha512-AuvKTrTfQNYNIctbR1K/YGTR1756GycPsg7b9bdV9Duqur4gv6aKqHXah67Z8ImS7WEz5QVcOtlfW2rZEugt6w==",
++          "requires": {
++            "ansi-regex": "^5.0.0"
++          }
++        }
++      }
++    },
++    "color-convert": {
++      "version": "2.0.1",
++      "resolved": "https://registry.npmjs.org/color-convert/-/color-convert-2.0.1.tgz",
++      "integrity": "sha512-RRECPsj7iu/xb5oKYcsFHSppFNnsj/52OVTRKb4zP5onXwVF3zVmmToNcOfGC+CRDpfK/U584fMg38ZHCaElKQ==",
++      "requires": {
++        "color-name": "~1.1.4"
++      }
++    },
++    "color-name": {
++      "version": "1.1.4",
++      "resolved": "https://registry.npmjs.org/color-name/-/color-name-1.1.4.tgz",
++      "integrity": "sha512-dOy+3AuW3a2wNbZHIuMZpTcgjGuLU/uBL/ubcZF9OXbDo8ff4O8yVp5Bf0efS8uEoYo5q4Fx7dY9OgQGXgAsQA=="
++    },
++    "concat-map": {
++      "version": "0.0.1",
++      "resolved": "https://registry.npmjs.org/concat-map/-/concat-map-0.0.1.tgz",
++      "integrity": "sha1-2Klr13/Wjfd5OnMDajug1UBdR3s=",
++      "dev": true
++    },
++    "cross-spawn": {
++      "version": "7.0.3",
++      "resolved": "https://registry.npmjs.org/cross-spawn/-/cross-spawn-7.0.3.tgz",
++      "integrity": "sha512-iRDPJKUPVEND7dHPO8rkbOnPpyDygcDFtWjpeWNCgy8WP2rXcxXL8TskReQl6OrB2G7+UJrags1q15Fudc7G6w==",
++      "dev": true,
++      "requires": {
++        "path-key": "^3.1.0",
++        "shebang-command": "^2.0.0",
++        "which": "^2.0.1"
++      }
++    },
++    "debug": {
++      "version": "4.1.1",
++      "resolved": "https://registry.npmjs.org/debug/-/debug-4.1.1.tgz",
++      "integrity": "sha512-pYAIzeRo8J6KPEaJ0VWOh5Pzkbw/RetuzehGM7QRRX5he4fPHx2rdKMB256ehJCkX+XRQm16eZLqLNS8RSZXZw==",
++      "requires": {
++        "ms": "^2.1.1"
++      }
++    },
++    "decamelize": {
++      "version": "1.2.0",
++      "resolved": "https://registry.npmjs.org/decamelize/-/decamelize-1.2.0.tgz",
++      "integrity": "sha1-9lNNFRSCabIDUue+4m9QH5oZEpA="
++    },
++    "deep-is": {
++      "version": "0.1.3",
++      "resolved": "https://registry.npmjs.org/deep-is/-/deep-is-0.1.3.tgz",
++      "integrity": "sha1-s2nW+128E+7PUk+RsHD+7cNXzzQ=",
++      "dev": true
++    },
++    "define-properties": {
++      "version": "1.1.3",
++      "resolved": "https://registry.npmjs.org/define-properties/-/define-properties-1.1.3.tgz",
++      "integrity": "sha512-3MqfYKj2lLzdMSf8ZIZE/V+Zuy+BgD6f164e8K2w7dgnpKArBDerGYpM46IYYcjnkdPNMjPk9A6VFB8+3SKlXQ==",
++      "requires": {
++        "object-keys": "^1.0.12"
++      }
++    },
++    "diff": {
++      "version": "4.0.2",
++      "resolved": "https://registry.npmjs.org/diff/-/diff-4.0.2.tgz",
++      "integrity": "sha512-58lmxKSA4BNyLz+HHMUzlOEpg09FV+ev6ZMe3vJihgdxzgcwZ8VoEEPmALCZG9LmqfVoNMMKpttIYTVG6uDY7A==",
++      "dev": true
++    },
++    "dijkstrajs": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/dijkstrajs/-/dijkstrajs-1.0.1.tgz",
++      "integrity": "sha1-082BIh4+pAdCz83lVtTpnpjdxxs="
++    },
++    "doctrine": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmjs.org/doctrine/-/doctrine-3.0.0.tgz",
++      "integrity": "sha512-yS+Q5i3hBf7GBkd4KG8a7eBNNWNGLTaEwwYWUijIYM7zrlYDM0BFXHjjPWlWZ1Rg7UaddZeIDmi9jF3HmqiQ2w==",
++      "dev": true,
++      "requires": {
++        "esutils": "^2.0.2"
++      }
++    },
++    "emoji-regex": {
++      "version": "8.0.0",
++      "resolved": "https://registry.npmjs.org/emoji-regex/-/emoji-regex-8.0.0.tgz",
++      "integrity": "sha512-MSjYzcWNOA0ewAHpz0MxpYFvwg6yjy1NG3xteoqz644VCo/RPgnr1/GGt+ic3iJTzQ8Eu3TdM14SawnVUmGE6A=="
++    },
++    "enquirer": {
++      "version": "2.3.6",
++      "resolved": "https://registry.npmjs.org/enquirer/-/enquirer-2.3.6.tgz",
++      "integrity": "sha512-yjNnPr315/FjS4zIsUxYguYUPP2e1NK4d7E7ZOLiyYCcbFBiTMyID+2wvm2w6+pZ/odMA7cRkjhsPbltwBOrLg==",
++      "dev": true,
++      "requires": {
++        "ansi-colors": "^4.1.1"
++      }
++    },
++    "es-abstract": {
++      "version": "1.17.7",
++      "resolved": "https://registry.npmjs.org/es-abstract/-/es-abstract-1.17.7.tgz",
++      "integrity": "sha512-VBl/gnfcJ7OercKA9MVaegWsBHFjV492syMudcnQZvt/Dw8ezpcOHYZXJ96O8vx+g4x65YKhxOwDUh63aS5g==",
++      "dev": true,
++      "requires": {
++        "es-to-primitive": "^1.2.1",
++        "function-bind": "^1.1.1",
++        "has": "^1.0.3",
++        "has-symbols": "^1.0.1",
++        "is-callable": "^1.2.2",
++        "is-regex": "^1.1.1",
++        "object-inspect": "^1.8.0",
++        "object-keys": "^1.1.1",
++        "object.assign": "^4.1.1",
++        "string.prototype.trimend": "^1.0.1",
++        "string.prototype.trimstart": "^1.0.1"
++      },
++      "dependencies": {
++        "es-abstract": {
++          "version": "1.18.0-next.1",
++          "resolved": "https://registry.npmjs.org/es-abstract/-/es-abstract-1.18.0-next.1.tgz",
++          "integrity": "sha512-I4UGspA0wpZXWENrdA0uHbnhte683t3qT/1VFH9aX2dA5PPSf6QW5HHXf5HImaqPmjXaVeVk4RGWnaylmV7uAA==",
++          "requires": {
++            "es-to-primitive": "^1.2.1",
++            "function-bind": "^1.1.1",
++            "has": "^1.0.3",
++            "has-symbols": "^1.0.1",
++            "is-callable": "^1.2.2",
++            "is-negative-zero": "^2.0.0",
++            "is-regex": "^1.1.1",
++            "object-inspect": "^1.8.0",
++            "object-keys": "^1.1.1",
++            "object.assign": "^4.1.1",
++            "string.prototype.trimend": "^1.0.1",
++            "string.prototype.trimstart": "^1.0.1"
++          }
++        },
++        "object.assign": {
++          "version": "4.1.1",
++          "resolved": "https://registry.npmjs.org/object.assign/-/object.assign-4.1.1.tgz",
++          "integrity": "sha512-VT/cxmx5yaoHSOTSyrCygIDFco+RsibY2NM0a4RdEeY/4KgqezwFtK1yr3U67xYhqJSlASm2pKhLVzPj2lr4bA==",
++          "requires": {
++            "define-properties": "^1.1.3",
++            "es-abstract": "^1.18.0-next.0",
++            "has-symbols": "^1.0.1",
++            "object-keys": "^1.1.1"
++          },
++          "dependencies": {
++            "es-abstract": {
++              "version": "1.18.0-next.1",
++              "resolved": "https://registry.npmjs.org/es-abstract/-/es-abstract-1.18.0-next.1.tgz",
++              "integrity": "sha512-I4UGspA0wpZXWENrdA0uHbnhte683t3qT/1VFH9aX2dA5PPSf6QW5HHXf5HImaqPmjXaVeVk4RGWnaylmV7uAA==",
++              "requires": {
++                "es-to-primitive": "^1.2.1",
++                "function-bind": "^1.1.1",
++                "has": "^1.0.3",
++                "has-symbols": "^1.0.1",
++                "is-callable": "^1.2.2",
++                "is-negative-zero": "^2.0.0",
++                "is-regex": "^1.1.1",
++                "object-inspect": "^1.8.0",
++                "object-keys": "^1.1.1",
++                "object.assign": "^4.1.1",
++                "string.prototype.trimend": "^1.0.1",
++                "string.prototype.trimstart": "^1.0.1"
++              }
++            }
++          }
++        }
++      }
++    },
++    "es-array-method-boxes-properly": {
++      "version": "1.0.0",
++      "resolved": "https://registry.npmjs.org/es-array-method-boxes-properly/-/es-array-method-boxes-properly-1.0.0.tgz",
++      "integrity": "sha512-wd6JXUmyHmt8T5a2xreUwKcGPq6f1f+WwIJkijUqiGcJz1qqnZgP6XIK+QyIWU5lT7imeNxUll48bziG+TSYcA==",
++      "dev": true
++    },
++    "es-get-iterator": {
++      "version": "1.1.0",
++      "resolved": "https://registry.npmjs.org/es-get-iterator/-/es-get-iterator-1.1.0.tgz",
++      "integrity": "sha512-UfrmHuWQlNMTs35e1ypnvikg6jCz3SK8v8ImvmDsh36fCVUR1MqoFDiyn0/k52C8NqO3YsO8Oe0azeesNuqSsQ==",
++      "dev": true,
++      "requires": {
++        "es-abstract": "^1.17.4",
++        "has-symbols": "^1.0.1",
++        "is-arguments": "^1.0.4",
++        "is-map": "^2.0.1",
++        "is-set": "^2.0.1",
++        "is-string": "^1.0.5",
++        "isarray": "^2.0.5"
++      }
++    },
++    "es-to-primitive": {
++      "version": "1.2.1",
++      "resolved": "https://registry.npmjs.org/es-to-primitive/-/es-to-primitive-1.2.1.tgz",
++      "integrity": "sha512-QCOllgZJtaUo9miYBcLChTUaHNjJF3PYs1VidD7AwiEj1kYxKeQTctLAezAOH5ZKRH0g2IgPn6KwB4IT8iRpvA==",
++      "requires": {
++        "is-callable": "^1.1.4",
++        "is-date-object": "^1.0.1",
++        "is-symbol": "^1.0.2"
++      }
++    },
++    "escalade": {
++      "version": "3.1.1",
++      "resolved": "https://registry.npmjs.org/escalade/-/escalade-3.1.1.tgz",
++      "integrity": "sha512-k0er2gUkLf8O0zKJiAhmkTnJlTvINGv7ygDNPbeIsX/TJjGJZHuh9B2UxbsaEkmlEo9MfhrSzmhIlhRlI2GXnw=="
++    },
++    "escape-string-regexp": {
++      "version": "1.0.5",
++      "resolved": "https://registry.npmjs.org/escape-string-regexp/-/escape-string-regexp-1.0.5.tgz",
++      "integrity": "sha1-G2HAViGQqN/2rjuyzwIAyhMLhtQ="
++    },
++    "eslint": {
++      "version": "7.7.0",
++      "resolved": "https://registry.npmjs.org/eslint/-/eslint-7.7.0.tgz",
++      "integrity": "sha512-1KUxLzos0ZVsyL81PnRN335nDtQ8/vZUD6uMtWbF+5zDtjKcsklIi78XoE0MVL93QvWTu+E5y44VyyCsOMBrIg==",
++      "dev": true,
++      "requires": {
++        "@babel/code-frame": "^7.0.0",
++        "ajv": "^6.10.0",
++        "chalk": "^4.0.0",
++        "cross-spawn": "^7.0.2",
++        "debug": "^4.0.1",
++        "doctrine": "^3.0.0",
++        "enquirer": "^2.3.5",
++        "eslint-scope": "^5.1.0",
++        "eslint-utils": "^2.1.0",
++        "eslint-visitor-keys": "^1.3.0",
++        "espree": "^7.2.0",
++        "esquery": "^1.2.0",
++        "esutils": "^2.0.2",
++        "file-entry-cache": "^5.0.1",
++        "functional-red-black-tree": "^1.0.1",
++        "glob-parent": "^5.0.0",
++        "globals": "^12.1.0",
++        "ignore": "^4.0.6",
++        "import-fresh": "^3.0.0",
++        "imurmurhash": "^0.1.4",
++        "is-glob": "^4.0.0",
++        "js-yaml": "^3.13.1",
++        "json-stable-stringify-without-jsonify": "^1.0.1",
++        "levn": "^0.4.1",
++        "lodash": "^4.17.19",
++        "minimatch": "^3.0.4",
++        "natural-compare": "^1.4.0",
++        "optionator": "^0.9.1",
++        "progress": "^2.0.0",
++        "regexpp": "^3.1.0",
++        "semver": "^7.2.1",
++        "strip-ansi": "^6.0.0",
++        "strip-json-comments": "^3.1.0",
++        "table": "^5.2.3",
++        "text-table": "^0.2.0",
++        "v8-compile-cache": "^2.0.3"
++      },
++      "dependencies": {
++        "ansi-regex": {
++          "version": "5.0.0",
++          "resolved": "https://registry.npmjs.org/ansi-regex/-/ansi-regex-5.0.0.tgz",
++          "integrity": "sha512-bY6fj56OUQ0hU1KjFNDQuJFezqKdrAyFdIevADiqrWHwSlbmBNMHp5ak2f40Pm8JTFyM2mqxkG6ngkHO11f/lg==",
++          "dev": true
++        },
++        "ansi-styles": {
++          "version": "4.3.0",
++          "resolved": "https://registry.npmjs.org/ansi-styles/-/ansi-styles-4.3.0.tgz",
++          "integrity": "sha512-zbB9rCJAT1rbjiVDb2hqKFHNYLxgtk8NURxZ3IZwD3F6NtxbXZQCnnSi1Lkx+IDohdPlFp222wVALIheZJQSEg==",
++          "dev": true,
++          "requires": {
++            "color-convert": "^2.0.1"
++          }
++        },
++        "chalk": {
++          "version": "4.1.0",
++          "resolved": "https://registry.npmjs.org/chalk/-/chalk-4.1.0.tgz",
++          "integrity": "sha512-qwx12AxXe2Q5xQ43Ac//I6v5aXTipYrSESdOgzrN+9XjgEpyjpKuvSGaN4qE93f7TQTlerQQ8S+EQ0EyDoVL1A==",
++          "dev": true,
++          "requires": {
++            "ansi-styles": "^4.1.0",
++            "supports-color": "^7.1.0"
++          }
++        },
++        "has-flag": {
++          "version": "4.0.0",
++          "resolved": "https://registry.npmjs.org/has-flag/-/has-flag-4.0.0.tgz",
++          "integrity": "sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ==",
++          "dev": true
++        },
++        "strip-ansi": {
++          "version": "6.0.0",
++          "resolved": "https://registry.npmjs.org/strip-ansi/-/strip-ansi-6.0.0.tgz",
++          "integrity": "sha512-AuvKTrTfQNYNIctbR1K/YGTR1756GycPsg7b9bdV9Duqur4gv6aKqHXah67Z8ImS7WEz5QVcOtlfW2rZEugt6w==",
++          "dev": true,
++          "requires": {
++            "ansi-regex": "^5.0.0"
++          }
++        },
++        "supports-color": {
++          "version": "7.2.0",
++          "resolved": "https://registry.npmjs.org/supports-color/-/supports-color-7.2.0.tgz",
++          "integrity": "sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw==",
++          "dev": true,
++          "requires": {
++            "has-flag": "^4.0.0"
++          }
++        }
++      }
++    },
++    "eslint-scope": {
++      "version": "5.1.1",
++      "resolved": "https://registry.npmjs.org/eslint-scope/-/eslint-scope-5.1.1.tgz",
++      "integrity": "sha512-2NxwbF/hZ0KpepYN0cNbo+FN6XoK7GaHlQhgx/hIZl6Va0bF45RQOOwhLIy8lQDbuCiadSLCBnH2CFYquit5bw==",
++      "dev": true,
++      "requires": {
++        "esrecurse": "^4.3.0",
++        "estraverse": "^4.1.1"
++      }
++    },
++    "eslint-utils": {
++      "version": "2.1.0",
++      "resolved": "https://registry.npmjs.org/eslint-utils/-/eslint-utils-2.1.0.tgz",
++      "integrity": "sha512-w94dQYoauyvlDc43XnGB8lU3Zt713vNChgt4EWwhXAP2XkBvndfxF0AgIqKOOasjPIPzj9JqgwkwbCYD0/V3Zg==",
++      "dev": true,
++      "requires": {
++        "eslint-visitor-keys": "^1.1.0"
++      }
++    },
++    "eslint-visitor-keys": {
++      "version": "1.3.0",
++      "resolved": "https://registry.npmjs.org/eslint-visitor-keys/-/eslint-visitor-keys-1.3.0.tgz",
++      "integrity": "sha512-6J72N8UNa462wKFODt/PJ3IU60SDpC3QXC1Hjc1BXXpfL2C9R5+AU7jhe0F6GREqVMh4Juu+NY7xn+6dipUQ==",
++      "dev": true
++    },
++    "espree": {
++      "version": "7.3.0",
++      "resolved": "https://registry.npmjs.org/espree/-/espree-7.3.0.tgz",
++      "integrity": "sha512-dksIWsvKCixn1yrEXO8UosNSxaDoSYpq9reEjZSbHLpT5hpaCAKTLBwq0RHtLrIr+c0ByiYzWT8KTMRzoRCNlw==",
++      "dev": true,
++      "requires": {
++        "acorn": "^7.4.0",
++        "acorn-jsx": "^5.2.0",
++        "eslint-visitor-keys": "^1.3.0"
++      }
++    },
++    "esprima": {
++      "version": "4.0.1",
++      "resolved": "https://registry.npmjs.org/esprim-/esprima-4.0.1.tgz",
++      "integrity": "sha512-eGuFFw7Upda+g4p+QHvnW0RyTX/SVeJBDM/gCtMARO0cLuT2HcEKnTPvhjV6aGeqrCsbNop0Kszm0jsaWU4A==",
++      "dev": true
++    },
++    "esquery": {
++      "version": "1.3.1",
++      "resolved": "https://registry.npmjs.org/esquery/-/esquery-1.3.1.tgz",
++      "integrity": "sha512-olpvt9QG0vniUBZspVRN6lwB7hOZoTRtT+jzR+tS4ffYx2mzbw+z0XCOk44aaLYKApNX5nMm+E+P6o25ip/DHQ==",
++      "dev": true,
++      "requires": {
++        "estraverse": "^5.1.0"
++      },
++      "dependencies": {
++        "estraverse": {
++          "version": "5.2.0",
++          "resolved": "https://registry.npmjs.org/estraverse/-/estraverse-5.2.0.tgz",
++          "integrity": "sha512-BxbNGGNm0RyRYvUdHpIwv9IWzeM9XClbOxwoATuFdOE7ZE6wHL+HQ5T8hoPM+zHvmKzzsEqhgy0GrQ5X13afiQ==",
++          "dev": true
++        }
++      }
++    },
++    "esrecurse": {
++      "version": "4.3.0",
++      "resolved": "https://registry.npmjs.org/esrecurse/-/esrecurse-4.3.0.tgz",
++      "integrity": "sha512-KmfKL3b6G+RXvP8N1vr3Tq1kL/oCFgn2NYXEtqP8/L3pKapUA4G8cFVaoF3SU323CD4XypR/ffioHmkti6/Tag==",
++      "dev": true,
++      "requires": {
++        "estraverse": "^5.2.0"
++      },
++      "dependencies": {
++        "estraverse": {
++          "version": "5.2.0",
++          "resolved": "https://registry.npmjs.org/estraverse/-/estraverse-5.2.0.tgz",
++          "integrity": "sha512-BxbNGGNm0RyRYvUdHpIwv9IWzeM9XClbOxwoATuFdOE7ZE6wHL+HQ5T8hoPM+zHvmKzzsEqhgy0GrQ5X13afiQ==",
++          "dev": true
++        }
++      }
++    },
++    "estraverse": {
++      "version": "4.3.0",
++      "resolved": "https://registry.npmjs.org/estraverse/-/estraverse-4.3.0.tgz",
++      "integrity": "sha512-39nnKffWz8xN1BU/2c79n9nB9HDzo0niYUqx6xyqUnyoAnQyyWpOTdZEeiCch8BBu515t4wp9ZmgVfVhn9EBpw==",
++      "dev": true
++    },
++    "esutils": {
++      "version": "2.0.3",
++      "resolved": "https://registry.npmjs.org/esutils/-/esutils-2.0.3.tgz",
++      "integrity": "sha512-kVscqXk4OCp68SZ0dkgEKVi6/8ij300KBWTJq32P/dYeWTSwK41WyTxalN1eRmA5Z9UU/LX9D7FWSmV9SAYx6g==",
++      "dev": true
++    },
++    "fast-deep-equal": {
++      "version": "3.1.3",
++      "resolved": "https://registry.npmjs.org/fast-deep-equal/-/fast-deep-equal-3.1.3.tgz",
++      "integrity": "sha512-f3qQ9oQy9j2AhBe/H9VC91wLmKBCCU/gDOnKNAYG5hswO7BLKj09Hc5HYNz9cGI++xlpDCIgDaitVs03ATR84Q==",
++      "dev": true
++    },
++    "fast-json-stable-stringify": {
++      "version": "2.1.0",
++      "resolved": "https://registry.npmjs.org/fast-json-stable-stringify/-/fast-json-stable-stringify-2.1.0.tgz",
++      "integrity": "sha512-lhd/wF+Lk98HZoTCtlVraHtfh5XYijIjalXck7saUtuanSDyLMxnHhSXEDJqHxD7msR8D0uCmqlkwjCV8xvwHw==",
++      "dev": true
++    },
++    "fast-levenshtein": {
++      "version": "2.0.6",
++      "resolved": "https://registry.npmjs.org/fast-levenshtein/-/fast-levenshtein-2.0.6.tgz",
++      "integrity": "sha1-PYpcZog6FqMMqGQ+hR8Zuqd5eRc=",
++      "dev": true
++    },
++    "fd-slicer": {
++      "version": "1.1.0",
++      "resolved": "https://registry.npmjs.org/fd-slicer/-/fd-slicer-1.1.0.tgz",
++      "integrity": "sha1-JcfInLH5B3+IkbvmHY85Dq4lbx4=",
++      "requires": {
++        "pend": "~1.2.0"
++      }
++    },
++    "figlet": {
++      "version": "1.5.0",
++      "resolved": "https://registry.npmjs.org/figlet/-/figlet-1.5.0.tgz",
++      "integrity": "sha512-ZQJM4aifMpz6H19AW1VqvZ7l4pOE9p7i/3LyxgO2kp+PO/VcDYNqIHEMtkccqIhTXMKci4kjueJr/iCQEaT/Ww=="
++    },
++    "file-entry-cache": {
++      "version": "5.0.1",
++      "resolved": "https://registry.npmjs.org/file-entry-cache/-/file-entry-cache-5.0.1.tgz",
++      "integrity": "sha512-bCg29ictuBaKUwwArK4ouCaqDgLZcysCFLmM/Yn/FDoqndh/9vNuQfXRDvTuXKLxfD/JtZQGKFT8MGcJBK644g==",
++      "dev": true,
++      "requires": {
++        "flat-cache": "^2.0.1"
++      }
++    },
++    "fill-range": {
++      "version": "7.0.1",
++      "resolved": "https://registry.npmjs.org/fill-range/-/fill-range-7.0.1.tgz",
++      "integrity": "sha512-qOo9F+dMUmC2Lcb4BbVvnKJxTPjCm+RRpe4gDuGrzkL7mEVl/djYSu2OdQ2Pa302N4oqkSg9ir6jaLWJ2USVpQ==",
++      "dev": true,
++      "requires": {
++        "to-regex-range": "^5.0.1"
++      }
++    },
++    "find-up": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmjs.org/find-up/-/find-up-3.0.0.tgz",
++      "integrity": "sha512-1yD6RmLI1XBfxugvORwlck6f75tYL+iR0jqwsOrOxMZyGYqUuDhJ0l4AXdO1iX/FTs9cBAMEk1gWSEx1kSbylg==",
++      "requires": {
++        "locate-path": "^3.0.0"
++      }
++    },
++    "flat": {
++      "version": "4.1.1",
++      "resolved": "https://registry.npmjs.org/flat/-/flat-4.1.1.tgz",
++      "integrity": "sha512-FmTtBsHskrU6FJ2VxCnsDb84wu9zhmO3cUX2kGFb5tuwhfXxGciiT0oRY+cck35QmG+NmGh5eLz6lLCpWTqwpA==",
++      "dev": true,
++      "requires": {
++        "is-buffer": "~2.0.3"
++      }
++    },
++    "flat-cache": {
++      "version": "2.0.1",
++      "resolved": "https://registry.npmjs.org/flat-cache/-/flat-cache-2.0.1.tgz",
++      "integrity": "sha512-LoQe6yDuUMDzQAEH8sgmh4Md6oZnc/7PjtwjNFSzveXqSHt6ka9fPBuso7IGf9Rz4uqnSnWiFH2zj24a5ReA==",
++      "dev": true,
++      "requires": {
++        "flatted": "^2.0.0",
++        "rimraf": "2.6.3",
++        "write": "1.0.3"
++      }
++    },
++    "flatted": {
++      "version": "2.0.2",
++      "resolved": "https://registry.npmjs.org/flatted/-/flatted-2.0.2.tgz",
++      "integrity": "sha512-r5wGx7YeOwNWNlCA0wQ86zKyDLMQr+/RB8xy74M4hTphfmjlijTSSXGuH8rnvKZnfT9i+75zmd8jcKdMR4O6jA==",
++      "dev": true
++    },
++    "fs.realpath": {
++      "version": "1.0.0",
++      "resolved": "https://registry.npmjs.org/fs.realpath/-/fs.realpath-1.0.0.tgz",
++      "integrity": "sha1-FQStJSMVjKpA20onh8sBQRmU6k8=",
++      "dev": true
++    },
++    "fsevents": {
++      "version": "2.1.3",
++      "resolved": "https://registry.npmjs.org/fsevents/-/fsevents-2.1.3.tgz",
++      "integrity": "sha512-Auw9a4AxqWpa9GUfj370BMPzzyncfBABW8Mab7BGWBYDj4Isgq+cDKtx0i6u9jcX9pQDnswsaaOTgTmA5pEjuQ==",
++      "dev": true,
++      "optional": true
++    },
++    "function-bind": {
++      "version": "1.1.1",
++      "resolved": "https://registry.npmjs.org/function-bind/-/function-bind-1.1.1.tgz",
++      "integrity": "sha512-yIovAzMX49sF8Yl58fSCWJ5svSLuaibPxXQJFLmBObTuCr0Mf1KiPopGM9NiFjiYBCbfaa2Fh6breQ6ANVTI0A=="
++    },
++    "functional-red-black-tree": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/functional-red-black-tree/-/functional-red-black-tree-1.0.1.tgz",
++      "integrity": "sha1-GwqzvVU7Kg1jmdKcDj6gslIHgyc=",
++      "dev": true
++    },
++    "get-caller-file": {
++      "version": "2.0.5",
++      "resolved": "https://registry.npmjs.org/get-caller-file/-/get-caller-file-2.0.5.tgz",
++      "integrity": "sha512-DyFP3BM/3YHTQOCUL/w0OZHR0lpKeGrxotcHWcqNEdnltqFwXVfhEBQ94eIo34AfQpo0rGki4cyIiftY06h2Fg=="
++    },
++    "glob": {
++      "version": "7.1.6",
++      "resolved": "https://registry.npmjs.org/glo-/glob-7.1.6.tgz",
++      "integrity": "sha512-LwaxwyZ72Lk7vZINtNNrywX0ZuLyStrdDtabefZKAY5ZGJhVtgdznluResxNmPitE0SAO+O26sWTHeKSI2wMBA==",
++      "dev": true,
++      "requires": {
++        "fs.realpath": "^1.0.0",
++        "inflight": "^1.0.4",
++        "inherits": "2",
++        "minimatch": "^3.0.4",
++        "once": "^1.3.0",
++        "path-is-absolute": "^1.0.0"
++      }
++    },
++    "glob-parent": {
++      "version": "5.1.1",
++      "resolved": "https://registry.npmjs.org/glob-parent/-/glob-parent-5.1.1.tgz",
++      "integrity": "sha512-FnI+VGOpnlGHWZxthPGR+QhR78fuiK0sNLkHQv+bL9fQi57lNNdquIbnWrfROrolq8GK5Ek6BiMwqL/voRYQ==",
++      "dev": true,
++      "requires": {
++        "is-glob": "^4.0.1"
++      }
++    },
++    "globals": {
++      "version": "12.4.0",
++      "resolved": "https://registry.npmjs.org/globals/-/globals-12.4.0.tgz",
++      "integrity": "sha512-BWICuzzDvDoH54NHKCseDanAhE3CeDorgDL5MT6LMXXj2WCnd9UC2szdk4AWLfjdgNBCXLUanXYcpBBKOSWGwg==",
++      "dev": true,
++      "requires": {
++        "type-fest": "^0.8.1"
++      }
++    },
++    "growl": {
++      "version": "1.10.5",
++      "resolved": "https://registry.npmjs.org/growl/-/growl-1.10.5.tgz",
++      "integrity": "sha512-qBr4OuELkhPenW6goKVXiv47US3clb3/IbuWF9KNKEijAy9oeHxU9IgzjvJhHkUzhaj7rOUD7+YGWqUjLp5oSA==",
++      "dev": true
++    },
++    "has": {
++      "version": "1.0.3",
++      "resolved": "https://registry.npmjs.org/has/-/has-1.0.3.tgz",
++      "integrity": "sha512-f2dvO0VU6Oej7RkWJGrehjbzMAjFp5/VKPp5tTpWIV4JHHZK1/BxbFRtf/siA2SWTe09caDmVtYYzWEIbBS4zw==",
++      "requires": {
++        "function-bind": "^1.1.1"
++      }
++    },
++    "has-ansi": {
++      "version": "2.0.0",
++      "resolved": "https://registry.npmjs.org/has-ansi/-/has-ansi-2.0.0.tgz",
++      "integrity": "sha1-NPUEnOHs3ysGSa8+8k5F7TVBbZE=",
++      "requires": {
++        "ansi-regex": "^2.0.0"
++      }
++    },
++    "has-flag": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmjs.org/has-flag/-/has-flag-3.0.0.tgz",
++      "integrity": "sha1-tdRU3CGZriJWmfNGfloH87lVuv0=",
++      "dev": true
++    },
++    "has-symbols": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/has-symbols/-/has-symbols-1.0.1.tgz",
++      "integrity": "sha512-PLcsoqu++dmEIZB+6totNFKq/7Do+Z0u4oT0zKOJNl3lYK6vGwwu2hjHs+68OEZbTjiUE9bgOABXbP/GvrS0Kg=="
++    },
++    "he": {
++      "version": "1.2.0",
++      "resolved": "https://registry.npmjs.org/he/-/he-1.2.0.tgz",
++      "integrity": "sha512-F/1DnUGPopORZi0ni+CvrCgHQ5FyEAHRLSApuYWMmrbSwoN2Mn/7k+Gl38gJnR7yyDZk6WLXwiGod1JOWNDKGw==",
++      "dev": true
++    },
++    "ieee754": {
++      "version": "1.2.1",
++      "resolved": "https://registry.npmjs.org/ieee754/-/ieee754-1.2.1.tgz",
++      "integrity": "sha512-dcyqhDvX1C46lXZcVqCpK+FtMRQVdIMN6/Df5js2zouUsqG7I6sFxitIC+7KYK29KdXOLHdu9zL4sFnoVQnqaA=="
++    },
++    "ignore": {
++      "version": "4.0.6",
++      "resolved": "https://registry.npmjs.org/ignore/-/ignore-4.0.6.tgz",
++      "integrity": "sha512-cyFDKrqc/YdcWFniJhzI42+AzS+gNwmUzOSFcRCQYwySuBBBy/KjuxWLZ/FHEH6Moq1NizMOBWyTcv8O4OZIMg==",
++      "dev": true
++    },
++    "image-size": {
++      "version": "0.9.3",
++      "resolved": "https://registry.npmjs.org/image-size/-/image-size-0.9.3.tgz",
++      "integrity": "sha512-5SakFa79uhUVSjKeQE30GVzzLJ0QNzB53+I+/VD1vIesD6GP6uatWIlgU0uisFNLt1u0d6kBydp7yfk+lLJhLQ==",
++      "requires": {
++        "queue": "6.0.1"
++      }
++    },
++    "import-fresh": {
++      "version": "3.2.1",
++      "resolved": "https://registry.npmjs.org/import-fresh/-/import-fresh-3.2.1.tgz",
++      "integrity": "sha512-6e1q1cnWP2RXD9/keSkxHScg508CdXqXWgWBaETNhyuBFz+kUZlKboh+ISK+bU++DmbHimVBrOz/zzPe0sZ3sQ==",
++      "dev": true,
++      "requires": {
++        "parent-module": "^1.0.0",
++        "resolve-from": "^4.0.0"
++      }
++    },
++    "imurmurhash": {
++      "version": "0.1.4",
++      "resolved": "https://registry.npmjs.org/imurmurhash/-/imurmurhash-0.1.4.tgz",
++      "integrity": "sha1-khi5srkoojixPcT7a21XbyMUU+o=",
++      "dev": true
++    },
++    "inflight": {
++      "version": "1.0.6",
++      "resolved": "https://registry.npmjs.org/inflight/-/inflight-1.0.6.tgz",
++      "integrity": "sha1-Sb1jMdfQLQwJvJEKEHW6gWW1bfk=",
++      "dev": true,
++      "requires": {
++        "once": "^1.3.0",
++        "wrappy": "1"
++      }
++    },
++    "inherits": {
++      "version": "2.0.4",
++      "resolved": "https://registry.npmjs.org/inherits/-/inherits-2.0.4.tgz",
++      "integrity": "sha512-k/vGaX4/Yla3WzyMCvTQOXYeIHvqOKtnqBduzTHpzpQZzAskKMhZ2K+EnBiSM9zGSoIFeMpXKxa4dYeZIQqewQ=="
++    },
++    "is-arguments": {
++      "version": "1.0.4",
++      "resolved": "https://registry.npmjs.org/is-arguments/-/is-arguments-1.0.4.tgz",
++      "integrity": "sha512-xPh0Rmt8NE65sNzvyUmWgI1tz3mKq74lGA0mL8LYZcoIzKOzDh6HmrYm3d18k60nHerC8A9Km8kYu87zfSFnLA==",
++      "dev": true
++    },
++    "is-binary-path": {
++      "version": "2.1.0",
++      "resolved": "https://registry.npmjs.org/is-binary-path/-/is-binary-path-2.1.0.tgz",
++      "integrity": "sha512-ZMERYes6pDydyuGidse7OsHxtbI7WVeUEozgR/g7rd0xUimYNlvZRE/K2MgZTjWy725IfelLeVcEM97mmtRGXw==",
++      "dev": true,
++      "requires": {
++        "binary-extensions": "^2.0.0"
++      }
++    },
++    "is-buffer": {
++      "version": "2.0.4",
++      "resolved": "https://registry.npmjs.org/is-buffer/-/is-buffer-2.0.4.tgz",
++      "integrity": "sha512-Kq1rokWXOPXWuaMAqZiJW4XxsmD9zGx9q4aePabbn3qCRGedtH7Cm+zV8WETitMfu1wdh+Rvd6w5egwSngUX2A==",
++      "dev": true
++    },
++    "is-callable": {
++      "version": "1.2.2",
++      "resolved": "https://registry.npmjs.org/is-callable/-/is-callable-1.2.2.tgz",
++      "integrity": "sha512-dnMqspv5nU3LoewK2N/y7KLtxtakvTuaCsU9FU50/QDmdbHNy/4/JuRtMHqRU22o3q+W89YQndQEeCVwK+3qrA=="
++    },
++    "is-date-object": {
++      "version": "1.0.2",
++      "resolved": "https://registry.npmjs.org/is-date-object/-/is-date-object-1.0.2.tgz",
++      "integrity": "sha512-USlDT524woQ08aoZFzh3/Z6ch9Y/EWXEHQ/AaRN0SkKq4t2Jw2R2339tSXmwuVoY7LLlBCbOIlx2myP/L5zk0g=="
++    },
++    "is-extglob": {
++      "version": "2.1.1",
++      "resolved": "https://registry.npmjs.org/is-extglo-/is-extglob-2.1.1.tgz",
++      "integrity": "sha1-qIwCU1eR8C7TfHahueqXc8gz+MI=",
++      "dev": true
++    },
++    "is-fullwidth-code-point": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmjs.org/is-fullwidth-code-point/-/is-fullwidth-code-point-3.0.0.tgz",
++      "integrity": "sha512-zymm5+u+sCsSWyD9qNaejV3DFvhCKclKdizYaJUuHA83RLjb7nSuGnddCHGv0hk+KY7BMAlsWeK4Ueg6EV6XQg=="
++    },
++    "is-glob": {
++      "version": "4.0.1",
++      "resolved": "https://registry.npmjs.org/is-glo-/is-glob-4.0.1.tgz",
++      "integrity": "sha512-5G0tKtBTFImOqDnLB2hG6Bp2qcKEFduo4tZu9MT/H6NQv/ghhy30o55ufafxJ/LdH79LLs2Kfrn85TLKyA7BUg==",
++      "dev": true,
++      "requires": {
++        "is-extglob": "^2.1.1"
++      }
++    },
++    "is-map": {
++      "version": "2.0.1",
++      "resolved": "https://registry.npmjs.org/is-map/-/is-map-2.0.1.tgz",
++      "integrity": "sha512-T/S49scO8plUiAOA2DBTBG3JHpn1yiw0kRp6dgiZ0v2/6twi5eiB0rHtHFH9ZIrvlWc6+4O+m4zg5+Z833aXgw==",
++      "dev": true
++    },
++    "is-negative-zero": {
++      "version": "2.0.0",
++      "resolved": "https://registry.npmjs.org/is-negative-zero/-/is-negative-zero-2.0.0.tgz",
++      "integrity": "sha1-lVOxIbD6wohp2p7UWeIMdUN4hGE="
++    },
++    "is-number": {
++      "version": "7.0.0",
++      "resolved": "https://registry.npmjs.org/is-number/-/is-number-7.0.0.tgz",
++      "integrity": "sha512-41Cifkg6e8TylSpdtTpeLVMqvSBEVzTttHvERD741+pnZ8ANv0004MRL43QKPDlK9cGvNp6NZWZUBlbGXYxxng==",
++      "dev": true
++    },
++    "is-plain-obj": {
++      "version": "1.1.0",
++      "resolved": "https://registry.npmjs.org/is-plain-obj/-/is-plain-obj-1.1.0.tgz",
++      "integrity": "sha1-caUMhCnfync8kqOQpKA7OfzVHT4=",
++      "dev": true
++    },
++    "is-regex": {
++      "version": "1.1.1",
++      "resolved": "https://registry.npmjs.org/is-regex/-/is-regex-1.1.1.tgz",
++      "integrity": "sha512-1+QkEcxiLlB7VEyFtyBg94e08OAsvq7FUBgApTq/w2ymCLyKJgDPsybBENVtA7XCQEgEXxKPonG+mvYRxh/LIg==",
++      "requires": {
++        "has-symbols": "^1.0.1"
++      }
++    },
++    "is-set": {
++      "version": "2.0.1",
++      "resolved": "https://registry.npmjs.org/is-set/-/is-set-2.0.1.tgz",
++      "integrity": "sha512-eJEzOtVyenDs1TMzSQ3kU3K+E0GUS9sno+F0OBT97xsgcJsF9nXMBtkT9/kut5JEpM7oL7X/0qxR17K3mcwIAA==",
++      "dev": true
++    },
++    "is-string": {
++      "version": "1.0.5",
++      "resolved": "https://registry.npmjs.org/is-string/-/is-string-1.0.5.tgz",
++      "integrity": "sha512-buY6VNRjhQMiF1qWDouloZlQbRhDPCebwxSjxMjxgemYT46YMd2NR0/H+fBhEfWX4w9TBJ+ol+okqJKFE6vQ==",
++      "dev": true
++    },
++    "is-symbol": {
++      "version": "1.0.3",
++      "resolved": "https://registry.npmjs.org/is-symbol/-/is-symbol-1.0.3.tgz",
++      "integrity": "sha512-OwijhaRSgqvhm/0ZdAcXNZt9lYdKFpcRDT5ULUuYXPoT794UNOdU+gpT6Rzo7b4V2HUl/op6GqY894AZwv9faQ==",
++      "requires": {
++        "has-symbols": "^1.0.1"
++      }
++    },
++    "isarray": {
++      "version": "2.0.5",
++      "resolved": "https://registry.npmjs.org/isarray/-/isarray-2.0.5.tgz",
++      "integrity": "sha512-xHjhDr3cNBK0BzdUJSPXZntQUx/mwMS5Rw4A7lPJ90XGAO6ISP/ePDNuo0vhqOZU+UD5JoodwCAAoZQd3FeAKw=="
++    },
++    "isexe": {
++      "version": "2.0.0",
++      "resolved": "https://registry.npmjs.org/isexe/-/isexe-2.0.0.tgz",
++      "integrity": "sha1-6PvzdNxViUehDcsFctYz8s+hA="
++    },
++    "iterate-iterator": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/iterate-iterator/-/iterate-iterator-1.0.1.tgz",
++      "integrity": "sha512-3Q6tudGN05kbkDQDI4CqjaBf4qf85w6W6GnuZDtUVYwKgtC1q8yxYX7CZed7N+tLzQqS6roujWvszf13T+n9aw==",
++      "dev": true
++    },
++    "iterate-value": {
++      "version": "1.0.2",
++      "resolved": "https://registry.npmjs.org/iterate-value/-/iterate-value-1.0.2.tgz",
++      "integrity": "sha512-A6fMAio4D2ot2r/TYzr4yUWrmwNdsN5xL7+HUiyACE4DXm+q8HtPcnFTp+NnW3k4N05tZ7FVYFFb2CR13NxyHQ==",
++      "dev": true,
++      "requires": {
++        "es-get-iterator": "^1.0.2",
++        "iterate-iterator": "^1.0.1"
++      }
++    },
++    "js-tokens": {
++      "version": "4.0.0",
++      "resolved": "https://registry.npmjs.org/js-tokens/-/js-tokens-4.0.0.tgz",
++      "integrity": "sha512-RdJUflcE3cUzKiMqQgsCu06FPu9UdIJO0beYbPhHN4k6apgJtifcoCtT9bcxOpYBtpD2kCM6Sbzg4CausW/PKQ==",
++      "dev": true
++    },
++    "js-yaml": {
++      "version": "3.14.0",
++      "resolved": "https://registry.npmjs.org/js-yaml/-/js-yaml-3.14.0.tgz",
++      "integrity": "sha512-/4IbIeHcD9VMHFqDR/gQ7EdZdLimOvW2DdcxFjdyyZ9NsbS+ccrXqVWDtalRl5AlUqmpBx8EhPaWR+OtY17A==",
++      "dev": true,
++      "requires": {
++        "argparse": "^1.0.7",
++        "esprima": "^4.0.0"
++      }
++    },
++    "json-schema-traverse": {
++      "version": "0.4.1",
++      "resolved": "https://registry.npmjs.org/json-schema-traverse/-/json-schema-traverse-0.4.1.tgz",
++      "integrity": "sha512-xbbCH5dCYU5T8LcEhhuh7HJ88HXuW3qsI3Y0zOZFKfZEHcpWiHU/Jxzk629BrsamMiHQti9wMP+845RPe3Vg==",
++      "dev": true
++    },
++    "json-stable-stringify-without-jsonify": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/json-stable-stringify-without-jsonify/-/json-stable-stringify-without-jsonify-1.0.1.tgz",
++      "integrity": "sha1-nbe1lJatPzz+8wp1FC0tkwrXJlE=",
++      "dev": true
++    },
++    "levn": {
++      "version": "0.4.1",
++      "resolved": "https://registry.npmjs.org/levn/-/levn-0.4.1.tgz",
++      "integrity": "sha512-+bT2uH4E5LGE7h/n3evcS/sQlJXCpIp6ym8OWJ5eV6+67Dsql/LaaT7qJBAt2rzfo5QBGBhxDix1dMt2kQKQ==",
++      "dev": true,
++      "requires": {
++        "prelude-ls": "^1.2.1",
++        "type-check": "~0.4.0"
++      }
++    },
++    "loadash": {
++      "version": "1.0.0",
++      "resolved": "https://registry.npmjs.org/loadash/-/loadash-1.0.0.tgz",
++      "integrity": "sha512-xlX5HBsXB3KG0FJbJJG/3kYWCfsCyCSus3T+uHVu6QL6YxAdggmm3QeyLgn54N2yi5/UE6xxL5ZWJAAiHzHYEg=="
++    },
++    "locate-path": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmjs.org/locate-path/-/locate-path-3.0.0.tgz",
++      "integrity": "sha512-7AO748wWnIhNqAuaty2ZWHkQHRSNfPVIsPIfwEOWO22AmaoVrWavlOcMR5nzTLNYvp36X220/maaRsrec1G65A==",
++      "requires": {
++        "p-locate": "^3.0.0",
++        "path-exists": "^3.0.0"
++      }
++    },
++    "lodash": {
++      "version": "4.17.21",
++      "resolved": "https://registry.npmjs.org/lodash/-/lodash-4.17.21.tgz",
++      "integrity": "sha512-v2kDEe57lecTulaDIuNTPy3Ry4gLGJ6Z1O3vE1krgXZNrsQ+LFTGHVxVjcXPs17LhbZVGedAJv8XZ1tvj5FvSg=="
++    },
++    "log-symbols": {
++      "version": "4.0.0",
++      "resolved": "https://registry.npmjs.org/log-symbols/-/log-symbols-4.0.0.tgz",
++      "integrity": "sha512-FN8JBzLx6CzeMrB0tg6pqlGU1wCrXW+ZXGH481kfsBqer0hToTIiHdjH4Mq8xJUbvATujKCvaREGWpGUionraA==",
++      "dev": true,
++      "requires": {
++        "chalk": "^4.0.0"
++      },
++      "dependencies": {
++        "ansi-styles": {
++          "version": "4.3.0",
++          "resolved": "https://registry.npmjs.org/ansi-styles/-/ansi-styles-4.3.0.tgz",
++          "integrity": "sha512-zbB9rCJAT1rbjiVDb2hqKFHNYLxgtk8NURxZ3IZwD3F6NtxbXZQCnnSi1Lkx+IDohdPlFp222wVALIheZJQSEg==",
++          "dev": true,
++          "requires": {
++            "color-convert": "^2.0.1"
++          }
++        },
++        "chalk": {
++          "version": "4.1.0",
++          "resolved": "https://registry.npmjs.org/chalk/-/chalk-4.1.0.tgz",
++          "integrity": "sha512-qwx12AxXe2Q5xQ43Ac//I6v5aXTipYrSESdOgzrN+9XjgEpyjpKuvSGaN4qE93f7TQTlerQQ8S+EQ0EyDoVL1A==",
++          "dev": true,
++          "requires": {
++            "ansi-styles": "^4.1.0",
++            "supports-color": "^7.1.0"
++          }
++        },
++        "has-flag": {
++          "version": "4.0.0",
++          "resolved": "https://registry.npmjs.org/has-flag/-/has-flag-4.0.0.tgz",
++          "integrity": "sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ==",
++          "dev": true
++        },
++        "supports-color": {
++          "version": "7.2.0",
++          "resolved": "https://registry.npmjs.org/supports-color/-/supports-color-7.2.0.tgz",
++          "integrity": "sha512-qpCAvRl9stuOHveKsn7HncJRvv501qIacKzQlO/+Lwxc9+0q2wLyv4Dfvt80/DPn2pqOBsJdDiogXGR9+OvwRw==",
++          "dev": true,
++          "requires": {
++            "has-flag": "^4.0.0"
++          }
++        }
++      }
++    },
++    "minimatch": {
++      "version": "3.0.4",
++      "resolved": "https://registry.npmjs.org/minimatch/-/minimatch-3.0.4.tgz",
++      "integrity": "sha512-yJHVQEhyqPLUTgt9B83PXu6W3rx4MvvHvSUvToogpwoGDOUQ+yDrR0HRot+yOCdCO7u4hX3pWft6kWBBcqh0UA==",
++      "dev": true,
++      "requires": {
++        "brace-expansion": "^1.1.7"
++      }
++    },
++    "minimist": {
++      "version": "1.2.5",
++      "resolved": "https://registry.npmjs.org/minimist/-/minimist-1.2.5.tgz",
++      "integrity": "sha512-FM9nNUYrRBAELZQT3xeZQ7fmMOBg6nWNmJKTcgsJeaLstP/UODVpGsr5OhXhhXg6f+qtJ8uiZ+PUxkDWcgIXLw==",
++      "dev": true
++    },
++    "mkdirp": {
++      "version": "0.5.5",
++      "resolved": "https://registry.npmjs.org/mkdirp/-/mkdirp-0.5.5.tgz",
++      "integrity": "sha512-NKmAlESf6jMGym1++R0Ra7wvhV+wFW63FaSOFPwRahvea0gMUcGUhVeAg/0BC0wiv9ih5NYPB1Wn1UEI1/L+xQ==",
++      "dev": true,
++      "requires": {
++        "minimist": "^1.2.5"
++      }
++    },
++    "mocha": {
++      "version": "8.1.3",
++      "resolved": "https://registry.npmjs.org/moch-/mocha-8.1.3.tgz",
++      "integrity": "sha512-ZbaYib4hT4PpF4bdSO2DohooKXIn4lDeiYqB+vTmCdr6l2woW0b6H3pf5x4sM5nwQMru9RvjjHYWVGltR50ZBw==",
++      "dev": true,
++      "requires": {
++        "ansi-colors": "4.1.1",
++        "browser-stdout": "1.3.1",
++        "chokidar": "3.4.2",
++        "debug": "4.1.1",
++        "diff": "4.0.2",
++        "escape-string-regexp": "4.0.0",
++        "find-up": "5.0.0",
++        "glob": "7.1.6",
++        "growl": "1.10.5",
++        "he": "1.2.0",
++        "js-yaml": "3.14.0",
++        "log-symbols": "4.0.0",
++        "minimatch": "3.0.4",
++        "ms": "2.1.2",
++        "object.assign": "4.1.0",
++        "promise.allsettled": "1.0.2",
++        "serialize-javascript": "4.0.0",
++        "strip-json-comments": "3.0.1",
++        "supports-color": "7.1.0",
++        "which": "2.0.2",
++        "wide-align": "1.1.3",
++        "workerpool": "6.0.0",
++        "yargs": "13.3.2",
++        "yargs-parser": "13.1.2",
++        "yargs-unparser": "1.6.1"
++      },
++      "dependencies": {
++        "ansi-regex": {
++          "version": "4.1.0",
++          "resolved": "https://registry.npmjs.org/ansi-regex/-/ansi-regex-4.1.0.tgz",
++          "integrity": "sha512-1apePfXM1UOSqw0o9IiFAovVz9M5S1Dg+4TrDwfMewQ6p/rmMueb7tWZjQ1rx4Loy1ArBggoqGpfqqdI4rondg==",
++          "dev": true
++        },
++        "ansi-styles": {
++          "version": "3.2.1",
++          "resolved": "https://registry.npmjs.org/ansi-styles/-/ansi-styles-3.2.1.tgz",
++          "integrity": "sha512-VT0ZI6kZRdTh8YyJw3SMbYm/u+NqfsAxEpWO0Pf9sq8/e94WxxOpPKx9FR1FlyCtOVDNOQ+8ntlqFxiRc+r5qA==",
++          "dev": true,
++          "requires": {
++            "color-convert": "^1.9.0"
++          }
++        },
++        "cliui": {
++          "version": "5.0.0",
++          "resolved": "https://registry.npmjs.org/cliui/-/cliui-5.0.0.tgz",
++          "integrity": "sha512-PYeGSEmmHM6zvoef2w8TPzlrnNpXIjTipYK780YswmIP9vjxmd6Y2a3CB2Ks6/AU8NHjZugXvo8w3oWM2qnwXA==",
++          "dev": true,
++          "requires": {
++            "string-width": "^3.1.0",
++            "strip-ansi": "^5.2.0",
++            "wrap-ansi": "^5.1.0"
++          }
++        },
++        "color-convert": {
++          "version": "1.9.3",
++          "resolved": "https://registry.npmjs.org/color-convert/-/color-convert-1.9.3.tgz",
++          "integrity": "sha512-QfAUtd+vFdAtFQcC8CCyYt1fYWxSqAiK2cSD6zDB8N3cpsEBAvRxp9zOGg6G/SHHJYAT88/az/IuDGALsNVbGg==",
++          "dev": true,
++          "requires": {
++            "color-name": "1.1.3"
++          }
++        },
++        "color-name": {
++          "version": "1.1.3",
++          "resolved": "https://registry.npmjs.org/color-name/-/color-name-1.1.3.tgz",
++          "integrity": "sha1-p9BVi9icQveV3UIyj3QIMcpTvCU=",
++          "dev": true
++        },
++        "emoji-regex": {
++          "version": "7.0.3",
++          "resolved": "https://registry.npmjs.org/emoji-regex/-/emoji-regex-7.0.3.tgz",
++          "integrity": "sha512-CwBLREIQ7LvYFB0WyRvwhq5N5qPhc6PMjD6bYggFlI5YyDgl+0vxq5VHbMOFqLg7hfWzmu8T5Z1QofhmTIhItA==",
++          "dev": true
++        },
++        "escape-string-regexp": {
++          "version": "4.0.0",
++          "resolved": "https://registry.npmjs.org/escape-string-regexp/-/escape-string-regexp-4.0.0.tgz",
++          "integrity": "sha512-TtpcNJ3XAzx3Gq8sWRzJaVajRs0uVxA2YAkdb1jm2YkPz4G6egUFAyA3n5vtEIZefPk5Wa4UXbKuS5fKkJWdgA==",
++          "dev": true
++        },
++        "find-up": {
++          "version": "5.0.0",
++          "resolved": "https://registry.npmjs.org/find-up/-/find-up-5.0.0.tgz",
++          "integrity": "sha512-78/PXT1wlLLDgTzDs7sjq9hzz0vXD+zn+7wypEe4fXQxCmdmqfGsEPQxmiCSQI3ajFV91bVSsvNtrJRiW6nGng==",
++          "dev": true,
++          "requires": {
++            "locate-path": "^6.0.0",
++            "path-exists": "^4.0.0"
++          }
++        },
++        "has-flag": {
++          "version": "4.0.0",
++          "resolved": "https://registry.npmjs.org/has-flag/-/has-flag-4.0.0.tgz",
++          "integrity": "sha512-EykJT/Q1KjTWctppgIAgfSO0tKVuZUjhgMr17kqTumMl6Afv3EISleU7qZUzoXDFTAHTDC4NOoG/ZxU3EvlMPQ==",
++          "dev": true
++        },
++        "is-fullwidth-code-point": {
++          "version": "2.0.0",
++          "resolved": "https://registry.npmjs.org/is-fullwidth-code-point/-/is-fullwidth-code-point-2.0.0.tgz",
++          "integrity": "sha1-o7MKXE8ZkYMWeqq5O+764937ZU8=",
++          "dev": true
++        },
++        "locate-path": {
++          "version": "6.0.0",
++          "resolved": "https://registry.npmjs.org/locate-path/-/locate-path-6.0.0.tgz",
++          "integrity": "sha512-iPZK6eYjbxRu3uB4/WZ3EsEIMJFMqAoopl3R+zuq0UjcAm/MO6KCweDgPfP3elTztoKP3KtnVHxTn2NHBSDVUw==",
++          "dev": true,
++          "requires": {
++            "p-locate": "^5.0.0"
++          }
++        },
++        "p-limit": {
++          "version": "3.0.2",
++          "resolved": "https://registry.npmjs.org/p-limit/-/p-limit-3.0.2.tgz",
++          "integrity": "sha512-iwqZSOoWIW+Ew4kAGUlN16J4M7OB3ysMLSZtnhmqx7njIHFPlxWBX8xo3lVTyFVq6mI/lL9qt2IsN1sHwaxJkg==",
++          "dev": true,
++          "requires": {
++            "p-try": "^2.0.0"
++          }
++        },
++        "p-locate": {
++          "version": "5.0.0",
++          "resolved": "https://registry.npmjs.org/p-locate/-/p-locate-5.0.0.tgz",
++          "integrity": "sha512-LaNjtRWUBY++zB5nE/NwcaoMylSPk+S+ZHNB1TzdbMJMny6dynpAGt7X/tl/QYq3TIeE6nxHppbo2LGymrG5Pw==",
++          "dev": true,
++          "requires": {
++            "p-limit": "^3.0.2"
++          }
++        },
++        "path-exists": {
++          "version": "4.0.0",
++          "resolved": "https://registry.npmjs.org/path-exists/-/path-exists-4.0.0.tgz",
++          "integrity": "sha512-ak9Qy5Q7jYb2Wwcey5Fpvg2KoAc/ZIhLSLOSBmRmygPsGwkVVt0fZa0qrtMz+m6tJTAHfZQ8FnmB4MG4LWy7/w==",
++          "dev": true
++        },
++        "string-width": {
++          "version": "3.1.0",
++          "resolved": "https://registry.npmjs.org/string-width/-/string-width-3.1.0.tgz",
++          "integrity": "sha512-vafcv6KjVZKSgz06oM/H6GDBrAtz8vdhQakGjFIvNrHA6y3HCF1CInLy+QLq8dTJPQ1b+KDUqDFctkdRW44e1w==",
++          "dev": true,
++          "requires": {
++            "emoji-regex": "^7.0.1",
++            "is-fullwidth-code-point": "^2.0.0",
++            "strip-ansi": "^5.1.0"
++          }
++        },
++        "strip-ansi": {
++          "version": "5.2.0",
++          "resolved": "https://registry.npmjs.org/strip-ansi/-/strip-ansi-5.2.0.tgz",
++          "integrity": "sha512-DuRs1gKbBqsMKIZlrffwlug8MHkcnpjs5VPmL1PAh+mA30U0DTotfDZ0d2UUsXpPmPmMMJ6W773MaA3J+lbiWA==",
++          "dev": true,
++          "requires": {
++            "ansi-regex": "^4.1.0"
++          }
++        },
++        "strip-json-comments": {
++          "version": "3.0.1",
++          "resolved": "https://registry.npmjs.org/strip-json-comments/-/strip-json-comments-3.0.1.tgz",
++          "integrity": "sha512-VTyMAUfdm047mwKl+u79WIdrZxtFtn+nBxHeb844XBQ9uMNTuTHdx2hc5RiAJYqwTj3wc/xe5HLSdJSkJ+WfZw==",
++          "dev": true
++        },
++        "supports-color": {
++          "version": "7.1.0",
++          "resolved": "https://registry.npmjs.org/supports-color/-/supports-color-7.1.0.tgz",
++          "integrity": "sha512-oRSIpR8pxT1Wr2FquTNnGet79b3BWljqOuoW/h4oBhxJ/HUbX5nX6JSruTkvXDCFMwDPvsaTTbvMLKZWSy0R5g==",
++          "dev": true,
++          "requires": {
++            "has-flag": "^4.0.0"
++          }
++        },
++        "wrap-ansi": {
++          "version": "5.1.0",
++          "resolved": "https://registry.npmjs.org/wrap-ansi/-/wrap-ansi-5.1.0.tgz",
++          "integrity": "sha512-QC1/iN/2/RPVJ5jYK8BGttj5z83LmSKmvbvrXPNCLZSEb32KKVDJDl/MOt2N01qU2H/FkzEa9PKto1BqDjtd7Q==",
++          "dev": true,
++          "requires": {
++            "ansi-styles": "^3.2.0",
++            "string-width": "^3.0.0",
++            "strip-ansi": "^5.0.0"
++          }
++        },
++        "y18n": {
++          "version": "4.0.0",
++          "resolved": "https://registry.npmjs.org/y18n/-/y18n-4.0.0.tgz",
++          "integrity": "sha512-r9S/ZyXu/Xu9q1tYlpsLIsa3EeLXXk0VwlxqTcFRfg9EhMW+17kbt9G0NrgCmhGb5vT2hyhJZLfDGx+7+5Uj/w==",
++          "dev": true
++        },
++        "yargs": {
++          "version": "13.3.2",
++          "resolved": "https://registry.npmjs.org/yargs/-/yargs-13.3.2.tgz",
++          "integrity": "sha512-AX3Zw5iPruN5ie6xGRIDgqkT+ZhnRlZMLMHAs8tg7nRruy2Nb+i5o9bwghAogtM08q1dpr2LVoS8KSTMYpWXUw==",
++          "dev": true,
++          "requires": {
++            "cliui": "^5.0.0",
++            "find-up": "^3.0.0",
++            "get-caller-file": "^2.0.1",
++            "require-directory": "^2.1.1",
++            "require-main-filename": "^2.0.0",
++            "set-blocking": "^2.0.0",
++            "string-width": "^3.0.0",
++            "which-module": "^2.0.0",
++            "y18n": "^4.0.0",
++            "yargs-parser": "^13.1.2"
++          },
++          "dependencies": {
++            "find-up": {
++              "version": "3.0.0",
++              "resolved": "https://registry.npmjs.org/find-up/-/find-up-3.0.0.tgz",
++              "integrity": "sha512-1yD6RmLI1XBfxugvORwlck6f75tYL+iR0jqwsOrOxMZyGYqUuDhJ0l4AXdO1iX/FTs9cBAMEk1gWSEx1kSbylg==",
++              "dev": true,
++              "requires": {
++                "locate-path": "^3.0.0"
++              }
++            },
++            "locate-path": {
++              "version": "3.0.0",
++              "resolved": "https://registry.npmjs.org/locate-path/-/locate-path-3.0.0.tgz",
++              "integrity": "sha512-7AO748wWnIhNqAuaty2ZWHkQHRSNfPVIsPIfwEOWO22AmaoVrWavlOcMR5nzTLNYvp36X220/maaRsrec1G65A==",
++              "dev": true,
++              "requires": {
++                "p-locate": "^3.0.0",
++                "path-exists": "^3.0.0"
++              }
++            },
++            "p-limit": {
++              "version": "2.3.0",
++              "resolved": "https://registry.npmjs.org/p-limit/-/p-limit-2.3.0.tgz",
++              "integrity": "sha512-//88mFWSJx8lxCzwdAABTJL2MyWB12+eIY7MDL2SqLmAkeKU9qxRvWuSyTjm3FUmpBEMuFfckAIqEaVGUDxb6w==",
++              "dev": true,
++              "requires": {
++                "p-try": "^2.0.0"
++              }
++            },
++            "p-locate": {
++              "version": "3.0.0",
++              "resolved": "https://registry.npmjs.org/p-locate/-/p-locate-3.0.0.tgz",
++              "integrity": "sha512-x+12w/To+4GFfgJhBEpiDcLozRJGegY+Ei7/z0tSLkMmxGZNybVMSfWj9aJn8Z5Fc7dBUNJOOVgPv2H7IwulSQ==",
++              "dev": true,
++              "requires": {
++                "p-limit": "^2.0.0"
++              }
++            },
++            "path-exists": {
++              "version": "3.0.0",
++              "resolved": "https://registry.npmjs.org/path-exists/-/path-exists-3.0.0.tgz",
++              "integrity": "sha1-zg6+ql94yxiSXqfYENe1mwEP1RU=",
++              "dev": true
++            }
++          }
++        },
++        "yargs-parser": {
++          "version": "13.1.2",
++          "resolved": "https://registry.npmjs.org/yargs-parser/-/yargs-parser-13.1.2.tgz",
++          "integrity": "sha512-3lbsNRf/j+A4QuSZfDRA7HRSfWrzO0YjqTJd5kjAq37Zep1CEgaYmrH9Q3GwPiB9cHyd1Y1UwggGhJGoxipbzg==",
++          "dev": true,
++          "requires": {
++            "camelcase": "^5.0.0",
++            "decamelize": "^1.2.0"
++          }
++        }
++      }
++    },
++    "moment": {
++      "version": "2.29.1",
++      "resolved": "https://registry.npmjs.org/moment/-/moment-2.29.1.tgz",
++      "integrity": "sha512-kHmoybcPV8Sqy59DwNDY3Jefr64lK/by/da0ViFcuA4DH0vQg5Q6Ze5VimxkfQNSC+Mls/Kx53s7TjP1RhFEDQ=="
++    },
++    "ms": {
++      "version": "2.1.2",
++      "resolved": "https://registry.npmjs.org/ms/-/ms-2.1.2.tgz",
++      "integrity": "sha512-sGkPx+VjMtmA6MX27oA4FBFELFCZZ4S4XqeGOXCv68tT+jb3vk/RyaKWP0PTKyWtmLSM0b+adUTEvbs1PEaH2w=="
++    },
++    "natural-compare": {
++      "version": "1.4.0",
++      "resolved": "https://registry.npmjs.org/natural-compare/-/natural-compare-1.4.0.tgz",
++      "integrity": "sha1-Sr6/7tdUHywnrPspvbvRXI1bpPc=",
++      "dev": true
++    },
++    "normalize-path": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmjs.org/normalize-path/-/normalize-path-3.0.0.tgz",
++      "integrity": "sha512-6eZs5Ls3WtCisHWp9S2GUy8dqkpGi4BVSz3GaqiE6ezub0512ESztXUwUB6C6IKbQkY2PnmD4WYojCRwcwLA==",
++      "dev": true
++    },
++    "object-inspect": {
++      "version": "1.8.0",
++      "resolved": "https://registry.npmjs.org/object-inspect/-/object-inspect-1.8.0.tgz",
++      "integrity": "sha512-jLdtEOB112fORuypAyl/50VRVIBIdVQOSUUGQHzJ4xBSbit81zRarz7GThkEFZy1RceYrWYcPcBFPQwHyAc1gA=="
++    },
++    "object-keys": {
++      "version": "1.1.1",
++      "resolved": "https://registry.npmjs.org/object-keys/-/object-keys-1.1.1.tgz",
++      "integrity": "sha512-NuAESUOUMrlIXOfHKzD6bpPu3tYt3xvjNdRIQ+FeT0lNb4K8WR70CaDxhuNguS2XG+GjkyMwOzsN5ZktImfhLA=="
++    },
++    "object.assign": {
++      "version": "4.1.0",
++      "resolved": "https://registry.npmjs.org/object.assign/-/object.assign-4.1.0.tgz",
++      "integrity": "sha512-exHJeq6kBKj58mqGyTQ9DFvrZC/eR6OwxzoM9YRoGBqrXYonaFyGiFMuc9VZrXf7DarreEwMpurG3dd+CNyW5w==",
++      "dev": true,
++      "requires": {
++        "define-properties": "^1.1.2",
++        "function-bind": "^1.1.1",
++        "has-symbols": "^1.0.0",
++        "object-keys": "^1.0.11"
++      }
++    },
++    "once": {
++      "version": "1.4.0",
++      "resolved": "https://registry.npmjs.org/once/-/once-1.4.0.tgz",
++      "integrity": "sha1-WDsap3WWHUsROsF9nFC6753Xa9E=",
++      "dev": true,
++      "requires": {
++        "wrappy": "1"
++      }
++    },
++    "optionator": {
++      "version": "0.9.1",
++      "resolved": "https://registry.npmjs.org/optionator/-/optionator-0.9.1.tgz",
++      "integrity": "sha512-74RlY5FCnhq4jRxVUPKDaRwrVNXMqsGsiW6AJw4XK8hmtm10wC0ypZBLw5IIp85NZMr91+qd1RvvENwg7jjRFw==",
++      "dev": true,
++      "requires": {
++        "deep-is": "^0.1.3",
++        "fast-levenshtein": "^2.0.6",
++        "levn": "^0.4.1",
++        "prelude-ls": "^1.2.1",
++        "type-check": "^0.4.0",
++        "word-wrap": "^1.2.3"
++      }
++    },
++    "p-limit": {
++      "version": "2.3.0",
++      "resolved": "https://registry.npmjs.org/p-limit/-/p-limit-2.3.0.tgz",
++      "integrity": "sha512-//88mFWSJx8lxCzwdAABTJL2MyWB12+eIY7MDL2SqLmAkeKU9qxRvWuSyTjm3FUmpBEMuFfckAIqEaVGUDxb6w==",
++      "requires": {
++        "p-try": "^2.0.0"
++      }
++    },
++    "p-locate": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmjs.org/p-locate/-/p-locate-3.0.0.tgz",
++      "integrity": "sha512-x+12w/To+4GFfgJhBEpiDcLozRJGegY+Ei7/z0tSLkMmxGZNybVMSfWj9aJn8Z5Fc7dBUNJOOVgPv2H7IwulSQ==",
++      "requires": {
++        "p-limit": "^2.0.0"
++      }
++    },
++    "p-try": {
++      "version": "2.2.0",
++      "resolved": "https://registry.npmjs.org/p-try/-/p-try-2.2.0.tgz",
++      "integrity": "sha512-R4nPAVTAU0B9D35/Gk3uJf/7XYbQcyohSKdvAxIRSNghFl4e71hVoGnBNQz9cWaXxO2I10KTC+3jMdvvoKw6dQ=="
++    },
++    "parent-module": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/parent-module/-/parent-module-1.0.1.tgz",
++      "integrity": "sha512-GQ2EWRpQV8/o+Aw8YqtfZZPfNRWZYkbidE9k5rpl/hC3vtHHBfGm2Ifi6qWV+coDGkrUKZAxE3Lot5kcsRlh+g==",
++      "dev": true,
++      "requires": {
++        "callsites": "^3.0.0"
++      }
++    },
++    "parent-require": {
++      "version": "1.0.0",
++      "resolved": "https://registry.npmjs.org/parent-require/-/parent-require-1.0.0.tgz",
++      "integrity": "sha1-dGoWdjgIOoYLDu9nMssn7UbDKXc="
++    },
++    "path-exists": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmjs.org/path-exists/-/path-exists-3.0.0.tgz",
++      "integrity": "sha1-zg6+ql94yxiSXqfYENe1mwEP1RU="
++    },
++    "path-is-absolute": {
++      "version": "1.0.1",
++      "resolved": "https://registry.npmjs.org/path-is-absolute/-/path-is-absolute-1.0.1.tgz",
++      "integrity": "sha1-F0uSaHNVNP+8es5r9TpanhtcX18=",
++      "dev": true
++    },
++    "path-key": {
++      "version": "3.1.1",
++      "resolved": "https://registry.npmjs.org/path-key/-/path-key-3.1.1.tgz",
++      "integrity": "sha512-ojmeN0qd+y0jszEtoY48r0Peq5dwMEkIlCOu6Q5f41lfkswXuKtYrhgoTpLnyIcHm24Uhqx+5Tqm2InSwLhE6Q==",
++      "dev": true
++    },
++    "pend": {
++      "version": "1.2.0",
++      "resolved": "https://registry.npmjs.org/pend/-/pend-1.2.0.tgz",
++      "integrity": "sha1-elfrVQpng/kRUzH89GY9XI4AelA="
++    },
++    "picomatch": {
++      "version": "2.2.2",
++      "resolved": "https://registry.npmjs.org/picomatch/-/picomatch-2.2.2.tgz",
++      "integrity": "sha512-q0M/9eZHzmr0AulXyPwNfZjtwZ/RBZlbN3K3CErVrk50T2ASYI7Bye0EvekFY3IP1Nt2DHu0re+V2ZHIpMkuWg==",
++      "dev": true
++    },
++    "pngjs": {
++      "version": "3.4.0",
++      "resolved": "https://registry.npmjs.org/pngjs/-/pngjs-3.4.0.tgz",
++      "integrity": "sha512-NCrCHhWmnQklfH4MtJMRjZ2a8c80qXeMlQMv2uVp9ISJMTt562SbGd6n2oq0PaPgKm7Z6pL9E2UlLIhC+SHL3w=="
++    },
++    "prelude-ls": {
++      "version": "1.2.1",
++      "resolved": "https://registry.npmjs.org/prelude-ls/-/prelude-ls-1.2.1.tgz",
++      "integrity": "sha512-vkcDPrRZo1QZLbn5RLGPpg/WmIQ65qoWWhcGKf/b5eplkkarX0m9z8ppCat4mlOqUsWpyNuYgO3VRyrYHSzX5g==",
++      "dev": true
++    },
++    "progress": {
++      "version": "2.0.3",
++      "resolved": "https://registry.npmjs.org/progress/-/progress-2.0.3.tgz",
++      "integrity": "sha512-7PiHtLll5LdnKIMw100I+8xJXR5gW2QwWYkT6iJva0bXitZKXMrSbdmg3r2Xnaidz9Qumd0VPaMrZlF9V9sA==",
++      "dev": true
++    },
++    "promise.allsettled": {
++      "version": "1.0.2",
++      "resolved": "https://registry.npmjs.org/promise.allsettled/-/promise.allsettled-1.0.2.tgz",
++      "integrity": "sha512-UpcYW5S1RaNKT6pd+s9jp9K9rlQge1UXKskec0j6Mmuq7UJCvlS2J2/s/yuPN8ehftf9HXMxWlKiPbGGUzpoRg==",
++      "dev": true,
++      "requires": {
++        "array.prototype.map": "^1.0.1",
++        "define-properties": "^1.1.3",
++        "es-abstract": "^1.17.0-next.1",
++        "function-bind": "^1.1.1",
++        "iterate-value": "^1.0.0"
++      }
++    },
++    "punycode": {
++      "version": "2.1.1",
++      "resolved": "https://registry.npmjs.org/punycode/-/punycode-2.1.1.tgz",
++      "integrity": "sha512-XRsRjdf+j5ml+y/6GKHPZbrF/8p2Yga0JPtdqTIY2Xe5ohJPD9saDJJLPvp9+NSBprVvevdXZybnj2cv8OEd0A==",
++      "dev": true
++    },
++    "qrcode": {
++      "version": "1.4.4",
++      "resolved": "https://registry.npmjs.org/qrcode/-/qrcode-1.4.4.tgz",
++      "integrity": "sha512-oLzEC5+NKFou9P0bMj5+v6Z40evexeE29Z9cummZXZ9QXyMr3lphkURzxjXgPJC5azpxcshoDWV1xE46z+/c3Q==",
++      "requires": {
++        "buffer": "^5.4.3",
++        "buffer-alloc": "^1.2.0",
++        "buffer-from": "^1.1.1",
++        "dijkstrajs": "^1.0.1",
++        "isarray": "^2.0.1",
++        "pngjs": "^3.3.0",
++        "yargs": "^13.2.4"
++      },
++      "dependencies": {
++        "ansi-regex": {
++          "version": "4.1.0",
++          "resolved": "https://registry.npmjs.org/ansi-regex/-/ansi-regex-4.1.0.tgz",
++          "integrity": "sha512-1apePfXM1UOSqw0o9IiFAovVz9M5S1Dg+4TrDwfMewQ6p/rmMueb7tWZjQ1rx4Loy1ArBggoqGpfqqdI4rondg=="
++        },
++        "ansi-styles": {
++          "version": "3.2.1",
++          "resolved": "https://registry.npmjs.org/ansi-styles/-/ansi-styles-3.2.1.tgz",
++          "integrity": "sha512-VT0ZI6kZRdTh8YyJw3SMbYm/u+NqfsAxEpWO0Pf9sq8/e94WxxOpPKx9FR1FlyCtOVDNOQ+8ntlqFxiRc+r5qA==",
++          "requires": {
++            "color-convert": "^1.9.0"
++          }
++        },
++        "cliui": {
++          "version": "5.0.0",
++          "resolved": "https://registry.npmjs.org/cliui/-/cliui-5.0.0.tgz",
++          "integrity": "sha512-PYeGSEmmHM6zvoef2w8TPzlrnNpXIjTipYK780YswmIP9vjxmd6Y2a3CB2Ks6/AU8NHjZugXvo8w3oWM2qnwXA==",
++          "requires": {
++            "string-width": "^3.1.0",
++            "strip-ansi": "^5.2.0",
++            "wrap-ansi": "^5.1.0"
++          }
++        },
++        "color-convert": {
++          "version": "1.9.3",
++          "resolved": "https://registry.npmjs.org/color-convert/-/color-convert-1.9.3.tgz",
++          "integrity": "sha512-QfAUtd+vFdAtFQcC8CCyYt1fYWxSqAiK2cSD6zDB8N3cpsEBAvRxp9zOGg6G/SHHJYAT88/az/IuDGALsNVbGg==",
++          "requires": {
++            "color-name": "1.1.3"
++          }
++        },
++        "color-name": {
++          "version": "1.1.3",
++          "resolved": "https://registry.npmjs.org/color-name/-/color-name-1.1.3.tgz",
++          "integrity": "sha1-p9BVi9icQveV3UIyj3QIMcpTvCU="
++        },
++        "emoji-regex": {
++          "version": "7.0.3",
++          "resolved": "https://registry.npmjs.org/emoji-regex/-/emoji-regex-7.0.3.tgz",
++          "integrity": "sha512-CwBLREIQ7LvYFB0WyRvwhq5N5qPhc6PMjD6bYggFlI5YyDgl+0vxq5VHbMOFqLg7hfWzmu8T5Z1QofhmTIhItA=="
++        },
++        "is-fullwidth-code-point": {
++          "version": "2.0.0",
++          "resolved": "https://registry.npmjs.org/is-fullwidth-code-point/-/is-fullwidth-code-point-2.0.0.tgz",
++          "integrity": "sha1-o7MKXE8ZkYMWeqq5O+764937ZU8="
++        },
++        "string-width": {
++          "version": "3.1.0",
++          "resolved": "https://registry.npmjs.org/string-width/-/string-width-3.1.0.tgz",
++          "integrity": "sha512-vafcv6KjVZKSgz06oM/H6GDBrAtz8vdhQakGjFIvNrHA6y3HCF1CInLy+QLq8dTJPQ1b+KDUqDFctkdRW44e1w==",
++          "requires": {
++            "emoji-regex": "^7.0.1",
++            "is-fullwidth-code-point": "^2.0.0",
++            "strip-ansi": "^5.1.0"
++          }
++        },
++        "strip-ansi": {
++          "version": "5.2.0",
++          "resolved": "https://registry.npmjs.org/strip-ansi/-/strip-ansi-5.2.0.tgz",
++          "integrity": "sha512-DuRs1gKbBqsMKIZlrffwlug8MHkcnpjs5VPmL1PAh+mA30U0DTotfDZ0d2UUsXpPmPmMMJ6W773MaA3J+lbiWA==",
++          "requires": {
++            "ansi-regex": "^4.1.0"
++          }
++        },
++        "wrap-ansi": {
++          "version": "5.1.0",
++          "resolved": "https://registry.npmjs.org/wrap-ansi/-/wrap-ansi-5.1.0.tgz",
++          "integrity": "sha512-QC1/iN/2/RPVJ5jYK8BGttj5z83LmSKmvbvrXPNCLZSEb32KKVDJDl/MOt2N01qU2H/FkzEa9PKto1BqDjtd7Q==",
++          "requires": {
++            "ansi-styles": "^3.2.0",
++            "string-width": "^3.0.0",
++            "strip-ansi": "^5.0.0"
++          }
++        },
++        "y18n": {
++          "version": "4.0.0",
++          "resolved": "https://registry.npmjs.org/y18n/-/y18n-4.0.0.tgz",
++          "integrity": "sha512-r9S/ZyXu/Xu9q1tYlpsLIsa3EeLXXk0VwlxqTcFRfg9EhMW+17kbt9G0NrgCmhGb5vT2hyhJZLfDGx+7+5Uj/w=="
++        },
++        "yargs": {
++          "version": "13.3.2",
++          "resolved": "https://registry.npmjs.org/yargs/-/yargs-13.3.2.tgz",
++          "integrity": "sha512-AX3Zw5iPruN5ie6xGRIDgqkT+ZhnRlZMLMHAs8tg7nRruy2Nb+i5o9bwghAogtM08q1dpr2LVoS8KSTMYpWXUw==",
++          "requires": {
++            "cliui": "^5.0.0",
++            "find-up": "^3.0.0",
++            "get-caller-file": "^2.0.1",
++            "require-directory": "^2.1.1",
++            "require-main-filename": "^2.0.0",
++            "set-blocking": "^2.0.0",
++            "string-width": "^3.0.0",
++            "which-module": "^2.0.0",
++            "y18n": "^4.0.0",
++            "yargs-parser": "^13.1.2"
++          }
++        },
++        "yargs-parser": {
++          "version": "13.1.2",
++          "resolved": "https://registry.npmjs.org/yargs-parser/-/yargs-parser-13.1.2.tgz",
++          "integrity": "sha512-3lbsNRf/j+A4QuSZfDRA7HRSfWrzO0YjqTJd5kjAq37Zep1CEgaYmrH9Q3GwPiB9cHyd1Y1UwggGhJGoxipbzg==",
++          "requires": {
++            "camelcase": "^5.0.0",
++            "decamelize": "^1.2.0"
++          }
++        }
++      }
++    },
++    "queue": {
++      "version": "6.0.1",
++      "resolved": "https://registry.npmjs.org/queue/-/queue-6.0.1.tgz",
++      "integrity": "sha512-AJBQabRCCNr9ANq8v77RJEv73DPbn55cdTb+Giq4X0AVnNVZvMHlYp7XlQiN+1npCZj1DuSmaA2hYVUUDgxFDg==",
++      "requires": {
++        "inherits": "~2.0.3"
++      }
++    },
++    "randombytes": {
++      "version": "2.1.0",
++      "resolved": "https://registry.npmjs.org/randombytes/-/randombytes-2.1.0.tgz",
++      "integrity": "sha512-vYl3iOX+4CKUWuxGi9Ukhie6fsqXqS9FE2Zaic4tNFD2N2QQaXOMFbuKK4QmDHC0JO6B1Zp41J0LpT0oR68amQ==",
++      "dev": true,
++      "requires": {
++        "safe-buffer": "^5.1.0"
++      }
++    },
++    "readdirp": {
++      "version": "3.4.0",
++      "resolved": "https://registry.npmjs.org/readdirp/-/readdirp-3.4.0.tgz",
++      "integrity": "sha512-0xe001vZBnJEK+uKcj8qOhyAKPzIT+gStxWr3LCB0DwcXR5NZJ3IaC+yGnHCYzS7ov3m3EEbZI2zeNvX+hGQ==",
++      "dev": true,
++      "requires": {
++        "picomatch": "^2.2.1"
++      }
++    },
++    "regexpp": {
++      "version": "3.1.0",
++      "resolved": "https://registry.npmjs.org/regexpp/-/regexpp-3.1.0.tgz",
++      "integrity": "sha512-ZOIzd8yVsQQA7j8GCSlPGXwg5PfmA1mrq0JP4nGhh54LaKN3xdai/vHUDu74pKwV8OxseMS65u2NImosQcSD0Q==",
++      "dev": true
++    },
++    "require-directory": {
++      "version": "2.1.1",
++      "resolved": "https://registry.npmjs.org/require-directory/-/require-directory-2.1.1.tgz",
++      "integrity": "sha1-jGStX9MNqxyXbiNE/+f3kqam30I="
++    },
++    "require-main-filename": {
++      "version": "2.0.0",
++      "resolved": "https://registry.npmjs.org/require-main-filename/-/require-main-filename-2.0.0.tgz",
++      "integrity": "sha512-NKN5kMDylKuldxYLSUfrbo5Tuzh4hd+2E8NPPX02mZtn1VuREQToYe/ZdlJy+J3uCpfaiGF05e7B8W0iXbQHmg=="
++    },
++    "resolve-from": {
++      "version": "4.0.0",
++      "resolved": "https://registry.npmjs.org/resolve-from/-/resolve-from-4.0.0.tgz",
++      "integrity": "sha512-pMYmXstAkysRFx8piNI1tGFNQIFA3vkE3Gq4EuA1dF6gHp/+vgZqsCGJapvy8N3Q+4o7FwvquPJcnZ7RYy4g==",
++      "dev": true
++    },
++    "rimraf": {
++      "version": "2.6.3",
++      "resolved": "https://registry.npmjs.org/rimraf/-/rimraf-2.6.3.tgz",
++      "integrity": "sha512-mwqeW5XsA2qAejG46gYdENaxXjx9onRNCfn7L0duuP4hCuTIi/QO7PDK07KJfp1d+izWPrzEJDcSqBa0OZQriA==",
++      "dev": true,
++      "requires": {
++        "glob": "^7.1.3"
++      }
++    },
++    "safe-buffer": {
++      "version": "5.2.1",
++      "resolved": "https://registry.npmjs.org/safe-buffer/-/safe-buffer-5.2.1.tgz",
++      "integrity": "sha512-rp3So07KcdmmKbGvgaNxQSJr7bGVSVk5S9Eq1F+ppbRo70+YeaDxkw5Dd8NPN+GD6bjnYm2VuPuCXmpuYvmCXQ==",
++      "dev": true
++    },
++    "sax": {
++      "version": "1.2.4",
++      "resolved": "https://registry.npmjs.org/sax/-/sax-1.2.4.tgz",
++      "integrity": "sha512-NqVDv9TpANUjFm0N8uM5GxL36UgKi9/atZw+x7YFnQ8ckwFGKrl4xX4yWtrey3UJm5nP1kUbnYgLopqWNSRhWw=="
++    },
++    "semver": {
++      "version": "7.3.2",
++      "resolved": "https://registry.npmjs.org/semver/-/semver-7.3.2.tgz",
++      "integrity": "sha512-OrOb32TeeambH6UrhtShmF7CRDqhL6/5XpPNp2DuRH6+9QLw/orhp72j87v8Qa1ScDkvrrBNpZcDejAirJmfXQ==",
++      "dev": true
++    },
++    "serialize-javascript": {
++      "version": "4.0.0",
++      "resolved": "https://registry.npmjs.org/serialize-javascript/-/serialize-javascript-4.0.0.tgz",
++      "integrity": "sha512-GaNA54380uFefWghODBWEGisLZFj00nS5ACs6yHa9nLqlLpVLO8ChDGeKRjZnV4Nh4n0Qi7nhYZD/9fCPzEqkw==",
++      "dev": true,
++      "requires": {
++        "randombytes": "^2.1.0"
++      }
++    },
++    "set-blocking": {
++      "version": "2.0.0",
++      "resolved": "https://registry.npmjs.org/set-blocking/-/set-blocking-2.0.0.tgz",
++      "integrity": "sha1-BF+XgtARrppoA93TgrJDkrPYkPc="
++    },
++    "shebang-command": {
++      "version": "2.0.0",
++      "resolved": "https://registry.npmjs.org/shebang-command/-/shebang-command-2.0.0.tgz",
++      "integrity": "sha512-kHxr2zZpYtdmrN1qDjrrX/Z1rR1kG8Dx+gkpK1G4eXmvXswmcE1hTWBWYUzlraYw1/yZp6YuDY77YtvbN0dmDA==",
++      "dev": true,
++      "requires": {
++        "shebang-regex": "^3.0.0"
++      }
++    },
++    "shebang-regex": {
++      "version": "3.0.0",
++      "resolved": "https://registry.npmjs.org/shebang-regex/-/shebang-regex-3.0.0.tgz",
++      "integrity": "sha512-7++dFhtcx3353uBaq8DDR4NuxBetBzC7ZQOhmTQInHEd6bSrXdiEyzCvG07Z44UYdLShWUyXt5M/yhz8ekcb1A==",
++      "dev": true
++    },
++    "slice-ansi": {
++      "version": "2.1.0",
++      "resolved": "https://registry.npmjs.org/slice-ansi/-/slice-ansi-2.1.0.tgz",
++      "integrity": "sha512-Qu+VC3EwYLldKa1fCxuuvULvSJOKEgk9pi8dZeCVK7TqBfUNTH4sFkk4joj8afVSfAYgJoSOetjx9QWOJ5mYoQ==",
++      "dev": true,
++      "requires": {
++        "ansi-styles": "^3.2.0",
++        "astral-regex": "^1.0.0",
++        "is-fullwidth-code-point": "^2.0.0"
++      },
++      "dependencies": {
++        "ansi-styles": {
++          "version": "3.2.1",
++          "resolved": "https://registry.npmjs.org/ansi-styles/-/ansi-styles-3.2.1.tgz",
++          "integrity": "sha512-VT0ZI6kZRdTh8YyJw3SMbYm/u+NqfsAxEpWO0Pf9sq8/e94WxxOpPKx9FR1FlyCtOVDNOQ+8ntlqFxiRc+r5qA==",
++          "dev": true,
++          "requires": {
++            "color-convert": "^1.9.0"
++          }
++        },
++        "color-convert": {
++          "version": "1.9.3",
++          "resolved": "https://registry.npmjs.org/color-convert/-/color-convert-1.9.3.tgz",
++          "integrity": "sha512-QfAUtd+vFdAtFQcC8CCyYt1fYWxSqAiK2cSD6zDB8N3cpsEBAvRxp9zOGg6G/SHHJYAT88/az/IuDGALsNVbGg==",
++          "dev": true,
++          "requires": {
++            "color-name": "1.1.3"
++          }
++        },
++        "color-name": {
++          "version": "1.1.3",
++          "resolved": "https://registry.npmjs.org/color-name/-/color-name-1.1.3.tgz",
++          "integrity": "sha1-p9BVi9icQveV3UIyj3QIMcpTvCU=",
++          "dev": true
++        },
++        "is-fullwidth-code-point": {
++          "version": "2.0.0",
++          "resolved": "https://registry.npmjs.org/is-fullwidth-code-point/-/is-fullwidth-code-point-2.0.0.tgz",
++          "integrity": "sha1-o7MKXE8ZkYMWeqq5O+764937ZU8=",
++          "dev": true
++        }
++      }
++    },
++    "sprintf-js": {
++      "version": "1.0.3",
++      "resolved": "https://registry.npmjs.org/sprintf-js/-/sprintf-js-1.0.3.tgz",
++      "integrity": "sha1-BOaSb2YolTVPPdAVIDYzuFcpfiw=",
++      "dev": true
++    },
++    "string-width": {
++      "version": "4.2.0",
++      "resolved": "https://registry.npmjs.org/string-width/-/string-width-4.2.0.tgz",
++      "integrity": "sha512-zUz5JD+tgqtuDjMhwIg5uFVV3dtqZ9yQJlZVfq4I01/K5Paj5UHj7VyrQOJvzawSVlKpObApbfD0Ed6yJc+1eg==",
++      "requires": {
++        "emoji-regex": "^8.0.0",
++        "is-fullwidth-code-point": "^3.0.0",
++        "strip-ansi": "^6.0.0"
++      },
++      "dependencies": {
++        "ansi-regex": {
++          "version": "5.0.0",
++          "resolved": "https://registry.npmjs.org/ansi-regex/-/ansi-regex-5.0.0.tgz",
++          "integrity": "sha512-bY6fj56OUQ0hU1KjFNDQuJFezqKdrAyFdIevADiqrWHwSlbmBNMHp5ak2f40Pm8JTFyM2mqxkG6ngkHO11f/lg=="
++        },
++        "strip-ansi": {
++          "version": "6.0.0",
++          "resolved": "https://registry.npmjs.org/strip-ansi/-/strip-ansi-6.0.0.tgz",
++          "integrity": "sha512-AuvKTrTfQNYNIctbR1K/YGTR1756GycPsg7b9bdV9Duqur4gv6aKqHXah67Z8ImS7WEz5QVcOtlfW2rZEugt6w==",
++          "requires": {
++            "ansi-regex": "^5.0.0"
++          }
++        }
++      }
++    },
++    "string.prototype.trimend": {
++      "version": "1.0.2",
++      "resolved": "https://registry.npmjs.org/string.prototype.trimend/-/string.prototype.trimend-1.0.2.tgz",
++      "integrity": "sha512-8oAG/hi14Z4nOVP0z6mdiVZ/wqjDtWSLygMigTzAb+7aPEDTleeFf+WrF+alzecxIRkckkJVn+dTlwzJXORATw==",
++      "requires": {
++        "define-properties": "^1.1.3",
++        "es-abstract": "^1.18.0-next.1"
++      },
++      "dependencies": {
++        "es-abstract": {
++          "version": "1.18.0-next.1",
++          "resolved": "https://registry.npmjs.org/es-abstract/-/es-abstract-1.18.0-next.1.tgz",
++          "integrity": "sha512-I4UGspA0wpZXWENrdA0uHbnhte683t3qT/1VFH9aX2dA5PPSf6QW5HHXf5HImaqPmjXaVeVk4RGWnaylmV7uAA==",
++          "requires": {
++            "es-to-primitive": "^1.2.1",
++            "function-bind": "^1.1.1",
++            "has": "^1.0.3",
++            "has-symbols": "^1.0.1",
++            "is-callable": "^1.2.2",
++            "is-negative-zero": "^2.0.0",
++            "is-regex": "^1.1.1",
++            "object-inspect": "^1.8.0",
++            "object-keys": "^1.1.1",
++            "object.assign": "^4.1.1",
++            "string.prototype.trimend": "^1.0.1",
++            "string.prototype.trimstart": "^1.0.1"
++          }
++        },
++        "object.assign": {
++          "version": "4.1.1",
++          "resolved": "https://registry.npmjs.org/object.assign/-/object.assign-4.1.1.tgz",
++          "integrity": "sha512-VT/cxmx5yaoHSOTSyrCygIDFco+RsibY2NM0a4RdEeY/4KgqezwFtK1yr3U67xYhqJSlASm2pKhLVzPj2lr4bA==",
++          "requires": {
++            "define-properties": "^1.1.3",
++            "es-abstract": "^1.18.0-next.0",
++            "has-symbols": "^1.0.1",
++            "object-keys": "^1.1.1"
++          }
++        }
++      }
++    },
++    "string.prototype.trimstart": {
++      "version": "1.0.2",
++      "resolved": "https://registry.npmjs.org/string.prototype.trimstart/-/string.prototype.trimstart-1.0.2.tgz",
++      "integrity": "sha512-7F6CdBTl5zyu30BJFdzSTlSlLPwODC23Od+iLoVH8X6+3fvDPPuBVVj9iaB1GOsSTSIgVfsfm27R2FGrAPznWg==",
++      "requires": {
++        "define-properties": "^1.1.3",
++        "es-abstract": "^1.18.0-next.1"
++      },
++      "dependencies": {
++        "es-abstract": {
++          "version": "1.18.0-next.1",
++          "resolved": "https://registry.npmjs.org/es-abstract/-/es-abstract-1.18.0-next.1.tgz",
++          "integrity": "sha512-I4UGspA0wpZXWENrdA0uHbnhte683t3qT/1VFH9aX2dA5PPSf6QW5HHXf5HImaqPmjXaVeVk4RGWnaylmV7uAA==",
++          "requires": {
++            "es-to-primitive": "^1.2.1",
++            "function-bind": "^1.1.1",
++            "has": "^1.0.3",
++            "has-symbols": "^1.0.1",
++            "is-callable": "^1.2.2",
++            "is-negative-zero": "^2.0.0",
++            "is-regex": "^1.1.1",
++            "object-inspect": "^1.8.0",
++            "object-keys": "^1.1.1",
++            "object.assign": "^4.1.1",
++            "string.prototype.trimend": "^1.0.1",
++            "string.prototype.trimstart": "^1.0.1"
++          }
++        },
++        "object.assign": {
++          "version": "4.1.1",
++          "resolved": "https://registry.npmjs.org/object.assign/-/object.assign-4.1.1.tgz",
++          "integrity": "sha512-VT/cxmx5yaoHSOTSyrCygIDFco+RsibY2NM0a4RdEeY/4KgqezwFtK1yr3U67xYhqJSlASm2pKhLVzPj2lr4bA==",
++          "requires": {
++            "define-properties": "^1.1.3",
++            "es-abstract": "^1.18.0-next.0",
++            "has-symbols": "^1.0.1",
++            "object-keys": "^1.1.1"
++          }
++        }
++      }
++    },
++    "strip-ansi": {
++      "version": "3.0.1",
++      "resolved": "https://registry.npmjs.org/strip-ansi/-/strip-ansi-3.0.1.tgz",
++      "integrity": "sha1-ajhfuIU9lS1f8F0Oiq+UJ43GPc8=",
++      "requires": {
++        "ansi-regex": "^2.0.0"
++      }
++    },
++    "strip-json-comments": {
++      "version": "3.1.1",
++      "resolved": "https://registry.npmjs.org/strip-json-comments/-/strip-json-comments-3.1.1.tgz",
++      "integrity": "sha512-6fPc+R4ihwqP6N/aIv2f1gMH8lOVtWQHoqC4yK6oSDVVocumAsfCqjkXnqiYMhmMwS/mEHLp7Vehlt3ql6lEig==",
++      "dev": true
++    },
++    "supports-color": {
++      "version": "2.0.0",
++      "resolved": "https://registry.npmjs.org/supports-color/-/supports-color-2.0.0.tgz",
++      "integrity": "sha1-U10EXOa2Nj+kARcIRimZXp3zJMc="
++    },
++    "table": {
++      "version": "5.4.6",
++      "resolved": "https://registry.npmjs.org/table/-/table-5.4.6.tgz",
++      "integrity": "sha512-wmEc8m4fjnob4gt5riFRtTu/6+4rSe12TpAELNSqHMfF3IqnA+CH37USM6/YR3qRZv7e56kAEAtd6nKZaxe0Ug==",
++      "dev": true,
++      "requires": {
++        "ajv": "^6.10.2",
++        "lodash": "^4.17.14",
++        "slice-ansi": "^2.1.0",
++        "string-width": "^3.0.0"
++      },
++      "dependencies": {
++        "ansi-regex": {
++          "version": "4.1.0",
++          "resolved": "https://registry.npmjs.org/ansi-regex/-/ansi-regex-4.1.0.tgz",
++          "integrity": "sha512-1apePfXM1UOSqw0o9IiFAovVz9M5S1Dg+4TrDwfMewQ6p/rmMueb7tWZjQ1rx4Loy1ArBggoqGpfqqdI4rondg==",
++          "dev": true
++        },
++        "emoji-regex": {
++          "version": "7.0.3",
++          "resolved": "https://registry.npmjs.org/emoji-regex/-/emoji-regex-7.0.3.tgz",
++          "integrity": "sha512-CwBLREIQ7LvYFB0WyRvwhq5N5qPhc6PMjD6bYggFlI5YyDgl+0vxq5VHbMOFqLg7hfWzmu8T5Z1QofhmTIhItA==",
++          "dev": true
++        },
++        "is-fullwidth-code-point": {
++          "version": "2.0.0",
++          "resolved": "https://registry.npmjs.org/is-fullwidth-code-point/-/is-fullwidth-code-point-2.0.0.tgz",
++          "integrity": "sha1-o7MKXE8ZkYMWeqq5O+764937ZU8=",
++          "dev": true
++        },
++        "string-width": {
++          "version": "3.1.0",
++          "resolved": "https://registry.npmjs.org/string-width/-/string-width-3.1.0.tgz",
++          "integrity": "sha512-vafcv6KjVZKSgz06oM/H6GDBrAtz8vdhQakGjFIvNrHA6y3HCF1CInLy+QLq8dTJPQ1b+KDUqDFctkdRW44e1w==",
++          "dev": true,
++          "requires": {
++            "emoji-regex": "^7.0.1",
++            "is-fullwidth-code-point": "^2.0.0",
++            "strip-ansi": "^5.1.0"
++          }
++        },
++        "strip-ansi": {
++          "version": "5.2.0",
++          "resolved": "https://registry.npmjs.org/strip-ansi/-/strip-ansi-5.2.0.tgz",
++          "integrity": "sha512-DuRs1gKbBqsMKIZlrffwlug8MHkcnpjs5VPmL1PAh+mA30U0DTotfDZ0d2UUsXpPmPmMMJ6W773MaA3J+lbiWA==",
++          "dev": true,
++          "requires": {
++            "ansi-regex": "^4.1.0"
++          }
++        }
++      }
++    },
++    "text-table": {
++      "version": "0.2.0",
++      "resolved": "https://registry.npmjs.org/text-table/-/text-table-0.2.0.tgz",
++      "integrity": "sha1-f17oI66AUgfACvLfSoTsP8+lcLQ=",
++      "dev": true
++    },
++    "timsort": {
++      "version": "0.3.0",
++      "resolved": "https://registry.npmjs.org/timsort/-/timsort-0.3.0.tgz",
++      "integrity": "sha1-QFQRqOfmM5/mTbmiNN4R3DHgK9Q="
++    },
++    "to-regex-range": {
++      "version": "5.0.1",
++      "resolved": "https://registry.npmjs.org/to-regex-range/-/to-regex-range-5.0.1.tgz",
++      "integrity": "sha512-65P7iz6X5yEr1cwcgvQxbbIw7Uk3gOy5dIdtZ4rDveLqhrdJP+Li/Hx6tyK0NEb+2GCyneCMJiGqrADCSNk8sQ==",
++      "dev": true,
++      "requires": {
++        "is-number": "^7.0.0"
++      }
++    },
++    "type-check": {
++      "version": "0.4.0",
++      "resolved": "https://registry.npmjs.org/type-check/-/type-check-0.4.0.tgz",
++      "integrity": "sha512-XleUoc9uwGXqjWwXaUTZAmzMcFZ5858QA2vvx1Ur5xIcixXIP+8LnFDgRplU30us6teqdlskFfu+ae4K79Ooew==",
++      "dev": true,
++      "requires": {
++        "prelude-ls": "^1.2.1"
++      }
++    },
++    "type-fest": {
++      "version": "0.8.1",
++      "resolved": "https://registry.npmjs.org/type-fest/-/type-fest-0.8.1.tgz",
++      "integrity": "sha512-4dbzIzqvjtgiM5rw1k5rEHtBANKmdudhGyBEajN01fEyhaAIhsoKNy6y7+IN93IfpFtwY9iqi7kD+xwKhQsNJA==",
++      "dev": true
++    },
++    "uri-js": {
++      "version": "4.4.0",
++      "resolved": "https://registry.npmjs.org/uri-js/-/uri-js-4.4.0.tgz",
++      "integrity": "sha512-B0yRTzYdUCCn9n+F4+Gh4yIDtMQcaJsmYBDsTSG8g/OejKBodLQ2IHfN3bM7jUsRXndopT7OIXWdYqc1fjmV6g==",
++      "dev": true,
++      "requires": {
++        "punycode": "^2.1.0"
++      }
++    },
++    "v8-compile-cache": {
++      "version": "2.2.0",
++      "resolved": "https://registry.npmjs.org/v8-compile-cache/-/v8-compile-cache-2.2.0.tgz",
++      "integrity": "sha512-gTpR5XQNKFwOd4clxfnhaqvfqMpqEwr4tOtCyz4MtYZX2JYhfr1JvBFKdS+7K/9rfpZR3VLX+YWBbKoxCgS43Q==",
++      "dev": true
++    },
++    "which": {
++      "version": "2.0.2",
++      "resolved": "https://registry.npmjs.org/which/-/which-2.0.2.tgz",
++      "integrity": "sha512-BLI3Tl1TW3Pvl70l3yq3Y64i+awpwXqsGBYWkkqMtnbXgrMD+yj7rhW0kuEDxzJaYXGjEW5ogapKNMEKNMjibA==",
++      "requires": {
++        "isexe": "^2.0.0"
++      }
++    },
++    "which-module": {
++      "version": "2.0.0",
++      "resolved": "https://registry.npmjs.org/which-module/-/which-module-2.0.0.tgz",
++      "integrity": "sha1-2e8H3Od7mQK4o6j6SzHD4/fm6Ho="
++    },
++    "wide-align": {
++      "version": "1.1.3",
++      "resolved": "https://registry.npmjs.org/wide-align/-/wide-align-1.1.3.tgz",
++      "integrity": "sha512-QGkOQc8XL6Bt5PwnsExKBPuMKBxnGxWWW3fU55Xt4feHozMUhdUMaBCk290qpm/wG5u/RSKzwdAC4i51YigihA==",
++      "dev": true,
++      "requires": {
++        "string-width": "^1.0.2 || 2"
++      },
++      "dependencies": {
++        "ansi-regex": {
++          "version": "3.0.0",
++          "resolved": "https://registry.npmjs.org/ansi-regex/-/ansi-regex-3.0.0.tgz",
++          "integrity": "sha1-7QMXwyIGT3lGbAKWa922Bas32Zg=",
++          "dev": true
++        },
++        "is-fullwidth-code-point": {
++          "version": "2.0.0",
++          "resolved": "https://registry.npmjs.org/is-fullwidth-code-point/-/is-fullwidth-code-point-2.0.0.tgz",
++          "integrity": "sha1-o7MKXE8ZkYMWeqq5O+764937ZU8=",
++          "dev": true
++        },
++        "string-width": {
++          "version": "2.1.1",
++          "resolved": "https://registry.npmjs.org/string-width/-/string-width-2.1.1.tgz",
++          "integrity": "sha512-nOqH59deCq9SRHlxq1Aw85Jnt4w6KvLKqWVik6oA9ZklXLNIOlqg4F2yrT1MVaTjAqvVwdfeZ7w7aCvJD7ugkw==",
++          "dev": true,
++          "requires": {
++            "is-fullwidth-code-point": "^2.0.0",
++            "strip-ansi": "^4.0.0"
++          }
++        },
++        "strip-ansi": {
++          "version": "4.0.0",
++          "resolved": "https://registry.npmjs.org/strip-ansi/-/strip-ansi-4.0.0.tgz",
++          "integrity": "sha1-qEeQIusaw2iocTibY1JixQXuNo8=",
++          "dev": true,
++          "requires": {
++            "ansi-regex": "^3.0.0"
++          }
++        }
++      }
++    },
++    "word-wrap": {
++      "version": "1.2.3",
++      "resolved": "https://registry.npmjs.org/word-wrap/-/word-wrap-1.2.3.tgz",
++      "integrity": "sha512-Hz/mrNwitNRh/HUAtM/VT/5VH+ygD6DV7mYKZAtHOrbs8U7lvPS6xf7EJKMF0uW1KJCl0H701g3ZGus+muE5vQ==",
++      "dev": true
++    },
++    "workerpool": {
++      "version": "6.0.0",
++      "resolved": "https://registry.npmjs.org/workerpool/-/workerpool-6.0.0.tgz",
++      "integrity": "sha512-fU2OcNGVAJLLyKUoHkAgIhKb0JoCpSjLC/G2vYKxUjVmQwGbRVeoPJ1a8U4pnVofz4AQV5Y/NEw8oKqxEBtA==",
++      "dev": true
++    },
++    "wrap-ansi": {
++      "version": "7.0.0",
++      "resolved": "https://registry.npmjs.org/wrap-ansi/-/wrap-ansi-7.0.0.tgz",
++      "integrity": "sha512-YVGIj2kamLSTxw6NsZjoBxfSwsn0ycdesmc4p+Q21c5zPuZ1pl+NfxVdxPtdHvmNVOQ6XSYG4AUtyt/Fi7D16Q==",
++      "requires": {
++        "ansi-styles": "^4.0.0",
++        "string-width": "^4.1.0",
++        "strip-ansi": "^6.0.0"
++      },
++      "dependencies": {
++        "ansi-regex": {
++          "version": "5.0.0",
++          "resolved": "https://registry.npmjs.org/ansi-regex/-/ansi-regex-5.0.0.tgz",
++          "integrity": "sha512-bY6fj56OUQ0hU1KjFNDQuJFezqKdrAyFdIevADiqrWHwSlbmBNMHp5ak2f40Pm8JTFyM2mqxkG6ngkHO11f/lg=="
++        },
++        "ansi-styles": {
++          "version": "4.3.0",
++          "resolved": "https://registry.npmjs.org/ansi-styles/-/ansi-styles-4.3.0.tgz",
++          "integrity": "sha512-zbB9rCJAT1rbjiVDb2hqKFHNYLxgtk8NURxZ3IZwD3F6NtxbXZQCnnSi1Lkx+IDohdPlFp222wVALIheZJQSEg==",
++          "requires": {
++            "color-convert": "^2.0.1"
++          }
++        },
++        "strip-ansi": {
++          "version": "6.0.0",
++          "resolved": "https://registry.npmjs.org/strip-ansi/-/strip-ansi-6.0.0.tgz",
++          "integrity": "sha512-AuvKTrTfQNYNIctbR1K/YGTR1756GycPsg7b9bdV9Duqur4gv6aKqHXah67Z8ImS7WEz5QVcOtlfW2rZEugt6w==",
++          "requires": {
++            "ansi-regex": "^5.0.0"
++          }
++        }
++      }
++    },
++    "wrappy": {
++      "version": "1.0.2",
++      "resolved": "https://registry.npmjs.org/wrappy/-/wrappy-1.0.2.tgz",
++      "integrity": "sha1-tSQ9jz7BqjXxNkYFvA0QNuMKtp8=",
++      "dev": true
++    },
++    "write": {
++      "version": "1.0.3",
++      "resolved": "https://registry.npmjs.org/write/-/write-1.0.3.tgz",
++      "integrity": "sha512-/lg70HAjtkUgWPVZhZcm+T4hkL8Zbtp1nFNOn3lRrxnlv50SRBv7cR7RqR+GMsd3hUXy9hWBo4CHTbFTcOYwig==",
++      "dev": true,
++      "requires": {
++        "mkdirp": "^0.5.1"
++      }
++    },
++    "xml2js": {
++      "version": "0.4.23",
++      "resolved": "https://registry.npmjs.org/xml2js/-/xml2js-0.4.23.tgz",
++      "integrity": "sha512-ySPiMjM0+pLDftHgXY4By0uswI3SPKLDw/i3UXbnO8M/p28zqexCUoPmQFrYD+/1BzhGJSs2i1ERWKJAtiLrug==",
++      "requires": {
++        "sax": ">=0.6.0",
++        "xmlbuilder": "~11.0.0"
++      }
++    },
++    "xml2js-xpath": {
++      "version": "0.11.0",
++      "resolved": "https://registry.npmjs.org/xml2js-xpath/-/xml2js-xpath-0.11.0.tgz",
++      "integrity": "sha512-LJJWN9VcZUItBb3R3NmaWuE7+mZzhwGfo9vqekDki02ZnnO7M5QHeqpT49XBfWxZlBuuYVXw3t8rjvekZY43Yg==",
++      "requires": {
++        "lodash": "^4.17.15"
++      }
++    },
++    "xmlbuilder": {
++      "version": "11.0.1",
++      "resolved": "https://registry.npmjs.org/xmlbuilder/-/xmlbuilder-11.0.1.tgz",
++      "integrity": "sha512-fDlsI/kFEx7gLvbecc0/ohLG50fugQp8ryHzMTuW9vSa1GJ0XYWKnhsUx7oie3G98+r56aTQIUB4kht42R3JvA=="
++    },
++    "y18n": {
++      "version": "5.0.5",
++      "resolved": "https://registry.npmjs.org/y18n/-/y18n-5.0.5.tgz",
++      "integrity": "sha512-hsRUr4FFrvhhRH12wOdfs38Gy7k2FFzB9qgN9v3aLykRq0dRcdcpz5C9FxdS2NuhOrI/628KSTJ3rwHysYSg=="
++    },
++    "yargonaut": {
++      "version": "1.1.4",
++      "resolved": "https://registry.npmjs.org/yargonaut/-/yargonaut-1.1.4.tgz",
++      "integrity": "sha512-rHgFmbgXAAzl+1nngqOcwEljqHGG9uUZoPjsdZEs1w5JW9RXYzrSvH/u70C1JE5qFi0qjsdhnUX/dJRpWqitSA==",
++      "requires": {
++        "chalk": "^1.1.1",
++        "figlet": "^1.1.1",
++        "parent-require": "^1.0.0"
++      }
++    },
++    "yargs": {
++      "version": "16.1.0",
++      "resolved": "https://registry.npmjs.org/yargs/-/yargs-16.1.0.tgz",
++      "integrity": "sha512-upWFJOmDdHN0syLuESuvXDmrRcWd1QafJolHskzaw79uZa7/x53gxQKiR07W59GWY1tFhhU/Th9DrtSfpS782g==",
++      "requires": {
++        "cliui": "^7.0.2",
++        "escalade": "^3.1.1",
++        "get-caller-file": "^2.0.5",
++        "require-directory": "^2.1.1",
++        "string-width": "^4.2.0",
++        "y18n": "^5.0.2",
++        "yargs-parser": "^20.2.2"
++      }
++    },
++    "yargs-parser": {
++      "version": "20.2.3",
++      "resolved": "https://registry.npmjs.org/yargs-parser/-/yargs-parser-20.2.3.tgz",
++      "integrity": "sha512-emOFRT9WVHw03QSvN5qor9QQT9+sw5vwxfYweivSMHTcAXPefwVae2FjO7JJjj8hCE4CzPOPeFM83VwT29HCww=="
++    },
++    "yargs-unparser": {
++      "version": "1.6.1",
++      "resolved": "https://registry.npmjs.org/yargs-unparser/-/yargs-unparser-1.6.1.tgz",
++      "integrity": "sha512-qZV14lK9MWsGCmcr7u5oXGH0dbGqZAIxTDrWXZDo5zUr6b6iUmelNKO6x6R1dQT24AH3LgRxJpr8meWy2unolA==",
++      "dev": true,
++      "requires": {
++        "camelcase": "^5.3.1",
++        "decamelize": "^1.2.0",
++        "flat": "^4.1.0",
++        "is-plain-obj": "^1.1.0",
++        "yargs": "^14.2.3"
++      },
++      "dependencies": {
++        "ansi-regex": {
++          "version": "4.1.0",
++          "resolved": "https://registry.npmjs.org/ansi-regex/-/ansi-regex-4.1.0.tgz",
++          "integrity": "sha512-1apePfXM1UOSqw0o9IiFAovVz9M5S1Dg+4TrDwfMewQ6p/rmMueb7tWZjQ1rx4Loy1ArBggoqGpfqqdI4rondg==",
++          "dev": true
++        },
++        "ansi-styles": {
++          "version": "3.2.1",
++          "resolved": "https://registry.npmjs.org/ansi-styles/-/ansi-styles-3.2.1.tgz",
++          "integrity": "sha512-VT0ZI6kZRdTh8YyJw3SMbYm/u+NqfsAxEpWO0Pf9sq8/e94WxxOpPKx9FR1FlyCtOVDNOQ+8ntlqFxiRc+r5qA==",
++          "dev": true,
++          "requires": {
++            "color-convert": "^1.9.0"
++          }
++        },
++        "cliui": {
++          "version": "5.0.0",
++          "resolved": "https://registry.npmjs.org/cliui/-/cliui-5.0.0.tgz",
++          "integrity": "sha512-PYeGSEmmHM6zvoef2w8TPzlrnNpXIjTipYK780YswmIP9vjxmd6Y2a3CB2Ks6/AU8NHjZugXvo8w3oWM2qnwXA==",
++          "dev": true,
++          "requires": {
++            "string-width": "^3.1.0",
++            "strip-ansi": "^5.2.0",
++            "wrap-ansi": "^5.1.0"
++          }
++        },
++        "color-convert": {
++          "version": "1.9.3",
++          "resolved": "https://registry.npmjs.org/color-convert/-/color-convert-1.9.3.tgz",
++          "integrity": "sha512-QfAUtd+vFdAtFQcC8CCyYt1fYWxSqAiK2cSD6zDB8N3cpsEBAvRxp9zOGg6G/SHHJYAT88/az/IuDGALsNVbGg==",
++          "dev": true,
++          "requires": {
++            "color-name": "1.1.3"
++          }
++        },
++        "color-name": {
++          "version": "1.1.3",
++          "resolved": "https://registry.npmjs.org/color-name/-/color-name-1.1.3.tgz",
++          "integrity": "sha1-p9BVi9icQveV3UIyj3QIMcpTvCU=",
++          "dev": true
++        },
++        "emoji-regex": {
++          "version": "7.0.3",
++          "resolved": "https://registry.npmjs.org/emoji-regex/-/emoji-regex-7.0.3.tgz",
++          "integrity": "sha512-CwBLREIQ7LvYFB0WyRvwhq5N5qPhc6PMjD6bYggFlI5YyDgl+0vxq5VHbMOFqLg7hfWzmu8T5Z1QofhmTIhItA==",
++          "dev": true
++        },
++        "is-fullwidth-code-point": {
++          "version": "2.0.0",
++          "resolved": "https://registry.npmjs.org/is-fullwidth-code-point/-/is-fullwidth-code-point-2.0.0.tgz",
++          "integrity": "sha1-o7MKXE8ZkYMWeqq5O+764937ZU8=",
++          "dev": true
++        },
++        "string-width": {
++          "version": "3.1.0",
++          "resolved": "https://registry.npmjs.org/string-width/-/string-width-3.1.0.tgz",
++          "integrity": "sha512-vafcv6KjVZKSgz06oM/H6GDBrAtz8vdhQakGjFIvNrHA6y3HCF1CInLy+QLq8dTJPQ1b+KDUqDFctkdRW44e1w==",
++          "dev": true,
++          "requires": {
++            "emoji-regex": "^7.0.1",
++            "is-fullwidth-code-point": "^2.0.0",
++            "strip-ansi": "^5.1.0"
++          }
++        },
++        "strip-ansi": {
++          "version": "5.2.0",
++          "resolved": "https://registry.npmjs.org/strip-ansi/-/strip-ansi-5.2.0.tgz",
++          "integrity": "sha512-DuRs1gKbBqsMKIZlrffwlug8MHkcnpjs5VPmL1PAh+mA30U0DTotfDZ0d2UUsXpPmPmMMJ6W773MaA3J+lbiWA==",
++          "dev": true,
++          "requires": {
++            "ansi-regex": "^4.1.0"
++          }
++        },
++        "wrap-ansi": {
++          "version": "5.1.0",
++          "resolved": "https://registry.npmjs.org/wrap-ansi/-/wrap-ansi-5.1.0.tgz",
++          "integrity": "sha512-QC1/iN/2/RPVJ5jYK8BGttj5z83LmSKmvbvrXPNCLZSEb32KKVDJDl/MOt2N01qU2H/FkzEa9PKto1BqDjtd7Q==",
++          "dev": true,
++          "requires": {
++            "ansi-styles": "^3.2.0",
++            "string-width": "^3.0.0",
++            "strip-ansi": "^5.0.0"
++          }
++        },
++        "y18n": {
++          "version": "4.0.0",
++          "resolved": "https://registry.npmjs.org/y18n/-/y18n-4.0.0.tgz",
++          "integrity": "sha512-r9S/ZyXu/Xu9q1tYlpsLIsa3EeLXXk0VwlxqTcFRfg9EhMW+17kbt9G0NrgCmhGb5vT2hyhJZLfDGx+7+5Uj/w==",
++          "dev": true
++        },
++        "yargs": {
++          "version": "14.2.3",
++          "resolved": "https://registry.npmjs.org/yargs/-/yargs-14.2.3.tgz",
++          "integrity": "sha512-ZbotRWhF+lkjijC/VhmOT9wSgyBQ7+zr13+YLkhfsSiTriYsMzkTUFP18pFhWwBeMa5gUc1MzbhrO6/VB7c9Xg==",
++          "dev": true,
++          "requires": {
++            "cliui": "^5.0.0",
++            "decamelize": "^1.2.0",
++            "find-up": "^3.0.0",
++            "get-caller-file": "^2.0.1",
++            "require-directory": "^2.1.1",
++            "require-main-filename": "^2.0.0",
++            "set-blocking": "^2.0.0",
++            "string-width": "^3.0.0",
++            "which-module": "^2.0.0",
++            "y18n": "^4.0.0",
++            "yargs-parser": "^15.0.1"
++          }
++        },
++        "yargs-parser": {
++          "version": "15.0.1",
++          "resolved": "https://registry.npmjs.org/yargs-parser/-/yargs-parser-15.0.1.tgz",
++          "integrity": "sha512-0OAMV2mAZQrs3FkNpDQcBk1x5HXb8X4twADss4S0Iuk+2dGnLOE/fRHrsYm542GduMveyA77OF4wrNJuanRCWw==",
++          "dev": true,
++          "requires": {
++            "camelcase": "^5.0.0",
++            "decamelize": "^1.2.0"
++          }
++        }
++      }
++    },
++    "yauzl": {
++      "version": "2.10.0",
++      "resolved": "https://registry.npmjs.org/yauzl/-/yauzl-2.10.0.tgz",
++      "integrity": "sha1-x+sXyT4RLLEIb6bY5R+wZnt5pfk=",
++      "requires": {
++        "buffer-crc32": "~0.2.3",
++        "fd-slicer": "~1.1.0"
++      }
++    },
++    "yazl": {
++      "version": "2.5.1",
++      "resolved": "https://registry.npmjs.org/yazl/-/yazl-2.5.1.tgz",
++      "integrity": "sha512-phENi2PLiHnHb6QBVot+dJnaAZ0xosj7p3fWl+znIjBDlnMI2PsZCJZ306BPTFOaHf5qdDEI8x5qFrSOBN5vrw==",
++      "requires": {
++        "buffer-crc32": "~0.2.3"
++      }
++    }
++  }
++}
+diff --git package.json package.json
+index 961235c..dde2387 100644
+--- package.json
++++ package.json
+@@ -1,10 +1,16 @@
+ {
+-  "name": "carbone",
++  "name": "@keepsolutions/carbone",
+   "description": "Fast, Simple and Powerful report generator. Injects JSON and produces PDF, DOCX, XLSX, ODT, PPTX, ODS, ...!",
+-  "version": "2.1.1",
+-  "bin": "bin/carbone",
+-  "main": "./lib",
+-  "author": "David Grelaud",
++  "version": "2.1.1-6",
++  "bin": {
++    "carbone": "licarbone-cli.js"
++  },
++  "repository": {
++    "type": "git",
++    "url": "git+https://github.com/keeps/carbone.git"
++  },
++  "main": "./licarbone-cli.js",
++  "author": "Fork by KEEP SOLUTIONS of the original work of David Grelaud",
+   "license": "Apache-2.0",
+   "homepage": "https://carbone.io",
+   "keywords": [
+@@ -25,9 +31,18 @@
+   },
+   "dependencies": {
+     "debug": "=4.1.1",
+-    "moment": "=2.27.0",
++    "figlet": "^1.5.0",
++    "image-size": "^0.9.3",
++    "loadash": "^1.0.0",
++    "lodash": "^4.17.21",
++    "moment": "^2.29.1",
++    "qrcode": "^1.4.4",
+     "timsort": "=0.3.0",
+     "which": "=2.0.2",
++    "xml2js": "^0.4.23",
++    "xml2js-xpath": "^0.11.0",
++    "yargonaut": "^1.1.4",
++    "yargs": "^16.1.0",
+     "yauzl": "=2.10.0",
+     "yazl": "=2.5.1"
+   },
+@@ -37,5 +52,14 @@
+   },
+   "engines": {
+     "node": ">= 10.15.0"
++  },
++  "bugs": {
++    "url": "https://github.com/keeps/primeng/issues"
++  },
++  "directories": {
++    "doc": "doc",
++    "example": "examples",
++    "lib": "lib",
++    "test": "test"
+   }
+ }

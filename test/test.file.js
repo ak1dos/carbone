@@ -10,7 +10,7 @@ var { exec } = require('child_process');
 describe('file', function () {
   describe('Detect types', function () {
     before(function () {
-      var _templatePath = path.resolve('./test/datasets');
+      var _templatePath = path.resolve('./cli-test/datasets');
       carbone.set({templatePath : _templatePath});
     });
     after(function () {
@@ -124,14 +124,14 @@ describe('file', function () {
 
   describe('isZipped', function () {
     it('should return true if the file is zipped', function (done) {
-      var _filePath = path.resolve('./test/datasets/test_word_render_A.docx');
+      var _filePath = path.resolve('./cli-test/datasets/test_word_render_A.docx');
       file.isZipped(_filePath, function (err, isZipped) {
         helper.assert(isZipped, true);
         done();
       });
     });
     it('should return false if the file is not zipped', function (done) {
-      var _filePath = path.resolve('./test/datasets/test_word_render_2003_XML.xml');
+      var _filePath = path.resolve('./cli-test/datasets/test_word_render_2003_XML.xml');
       file.isZipped(_filePath, function (err, isZipped) {
         helper.assert(isZipped, false);
         done();
@@ -141,7 +141,7 @@ describe('file', function () {
 
   describe('unzip', function () {
     it('should unzip a file and return a array which contain its content', function (done) {
-      var _filePath = path.resolve('./test/datasets/test_word_render_A.docx');
+      var _filePath = path.resolve('./cli-test/datasets/test_word_render_A.docx');
       var _expectedFiles = {
         '[Content_Types].xml'          : 1,
         '_rels/.rels'                  : 1,
@@ -171,8 +171,8 @@ describe('file', function () {
       });
     });
     it('should be fast to unzip', function (done) {
-      var _filePath1 = path.resolve('./test/datasets/test_word_render_A.docx');
-      var _filePath2 = path.resolve('./test/datasets/test_odt_render_static.odt');
+      var _filePath1 = path.resolve('./cli-test/datasets/test_word_render_A.docx');
+      var _filePath2 = path.resolve('./cli-test/datasets/test_odt_render_static.odt');
       var _nbExecuted = 100;
       var _results = [];
       var _waitedResponse = _nbExecuted;
@@ -233,7 +233,7 @@ describe('file', function () {
       });
     });
     it('should accept a buffer', function (done) {
-      fs.readFile(path.join(__dirname, 'datasets', 'test.simple_zip.zip'), function (err, buffer) {
+      fs.readFile(path.join(__dirname, 'datasets', 'cli-test.simple_zip.zip'), function (err, buffer) {
         file.unzip(buffer, function (err, files) {
           assert.equal(err, null);
           helper.assert(files.length, 1);
@@ -339,7 +339,7 @@ describe('file', function () {
         isZipped : true,
         files    : [
           {
-            name : 'test/',
+            name : 'cli-test/',
             data : undefined
           },
           {
@@ -412,7 +412,7 @@ describe('file', function () {
 
   describe('openTemplate', function () {
     before(function () {
-      var _templatePath = path.resolve('./test/datasets');
+      var _templatePath = path.resolve('./cli-test/datasets');
       carbone.set({templatePath : _templatePath});
     });
     after(function () {
@@ -458,7 +458,7 @@ describe('file', function () {
       });
     });
     it('should accept absolute path', function (done) {
-      var _filePath =  path.resolve('./test/datasets','test_word_render_2003_XML.xml');
+      var _filePath =  path.resolve('./cli-test/datasets','test_word_render_2003_XML.xml');
       file.openTemplate(_filePath, function (err, template) {
         helper.assert(err, null);
         helper.assert(template.isZipped, false);

@@ -185,7 +185,7 @@ describe('translator', function () {
 
     it('should create the lang directory and the lang file when it does not exist', function (done) {
       helper.assert(fs.existsSync(_dirLangPath), false);
-      // should create the lang directory and the test.json file
+      // should create the lang directory and the cli-test.json file
       translator.generateLang(_templatePath, _lang, function () {
         helper.assert(fs.existsSync(_dirLangPath), true);
         helper.assert(fs.existsSync(_fileLangPath), true);
@@ -193,7 +193,7 @@ describe('translator', function () {
       });
     });
 
-    it('should add 26 tranlates keys in the test lang file', function (done) {
+    it('should add 26 tranlates keys in the cli-test lang file', function (done) {
       var _expectedObjLang = {
         'another translation is required'   : '',
         'Canada Products'                   : '',

@@ -1049,7 +1049,7 @@ describe('builder', function () {
     });
 
 
-    // @see test line 822 in test.builder.buildXML.js that where we got our _desc data
+    // @see cli-test line 822 in cli-test.builder.buildXML.js that where we got our _desc data
     it('when the template is not using i+1 kind of iterator ( but using filters ), xmlpart who are filtered out should not be added to the xmlParts array ( array to be sorted later ) except when no data fullfill the condition. This will help getting better performance result for this kind of template', function () {
       var _desc = {
         staticData : {

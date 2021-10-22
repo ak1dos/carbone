@@ -2792,7 +2792,7 @@ describe('extracter', function () {
     });
     it('should sort correctly nested arrays which start at the same position in xml.\
       This happens when two arrays are incremented in the same time (d.tab[i+1].subtab[i+1])', function () {
-      // This test is sensible.
+      // This cli-test is sensible.
       var _data = [
         { obj : '_rootdother'           , pos : 90                  },
         { obj : '_rootdfamiliesproducts', pos : 50, array : 'start' }, // sub array

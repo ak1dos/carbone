@@ -1226,7 +1226,7 @@ describe('builder.buildXML', function () {
     });
   });
   it('should not crash if the object null or undefined', function (done) {
-    var _xml = '<xml> <t_row> {d.test.id} </t_row></xml>';
+    var _xml = '<xml> <t_row> {d.cli-test.id} </t_row></xml>';
     var _data = {
       test : null
     };
@@ -1259,7 +1259,7 @@ describe('builder.buildXML', function () {
     });
   });
   it('should not crash if the object parent of an array is null or undefined', function (done) {
-    var _xml = '<xml> <t_row> {d.test.subArray[i].id}  <b/> {d.test.subArray[i].id} </t_row></xml>';
+    var _xml = '<xml> <t_row> {d.cli-test.subArray[i].id}  <b/> {d.cli-test.subArray[i].id} </t_row></xml>';
     var _data = {
       test : null
     };
@@ -1571,7 +1571,7 @@ describe('builder.buildXML', function () {
       ]
     };
     builder.buildXML(_xml, _data, function (err, _xmlBuilt) {
-      assert.equal(_xmlBuilt, '<xml><tr> test </tr><tr> test </tr><tr> test </tr></xml>');
+      assert.equal(_xmlBuilt, '<xml><tr> cli-test </tr><tr> cli-test </tr><tr> cli-test </tr></xml>');
       done();
     });
   });
@@ -1796,7 +1796,7 @@ describe('builder.buildXML', function () {
       ]
     };
     builder.buildXML(_xml, _data, function (err, _xmlBuilt) {
-      assert.equal(_xmlBuilt, '<xml><tr> test </tr></xml>');
+      assert.equal(_xmlBuilt, '<xml><tr> cli-test </tr></xml>');
       done();
     });
   });

@@ -242,10 +242,10 @@ describe('formatter', function () {
     ];
 
     /**
-     * Generic function to test all combination of context + datasets and print error
+     * Generic function to cli-test all combination of context + datasets and print error
      *
      * @param  {String} formatter           formatter to call
-     * @param  {Array}  data                dataset to test
+     * @param  {Array}  data                dataset to cli-test
      * @param  {Array}  expectedResult      true or false
      */
     function testCondition (formatter, data, expectedResult) {

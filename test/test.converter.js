@@ -124,8 +124,8 @@ describe('Converter', function () {
       });
     });
     it('should render a pdf and start an conversion factory automatically if no factories exist', function (done) {
-      var _pdfExpectedPath = path.resolve('./test/datasets/test_odt_render_static.pdf');
-      var _filePath = path.resolve('./test/datasets/test_odt_render_static.odt');
+      var _pdfExpectedPath = path.resolve('./cli-test/datasets/test_odt_render_static.pdf');
+      var _filePath = path.resolve('./cli-test/datasets/test_odt_render_static.odt');
       var _outputPath = path.join(tempPath, 'output1.pdf');
       converter.convertFile(_filePath, 'writer_pdf_Export', '', _outputPath, function (err, resultPath) {
         var _result   = fs.readFileSync(resultPath);
@@ -137,7 +137,7 @@ describe('Converter', function () {
       });
     });
     it('should restart automatically the conversion factory if it crashes', function (done) {
-      var _filePath = path.resolve('./test/datasets/test_odt_render_static.odt');
+      var _filePath = path.resolve('./cli-test/datasets/test_odt_render_static.odt');
       var _outputPath = path.join(tempPath, 'output2.pdf');
       converter.init({factories : 1, startFactory : true, tempPath : tempPath}, function (factories) {
         converter.convertFile(_filePath, 'writer_pdf_Export', '', _outputPath, function (err, resultPath) {
@@ -162,7 +162,7 @@ describe('Converter', function () {
     });
     it('should be fast to render a pdf with four Factories', function (done) {
       converter.init({factories : 4, startFactory : true, tempPath : tempPath}, function () {
-        var _filePath = path.resolve('./test/datasets/test_odt_render_static.odt');
+        var _filePath = path.resolve('./cli-test/datasets/test_odt_render_static.odt');
         var _nbExecuted = 200;
         var _results = [];
         var _waitedResponse = _nbExecuted;
@@ -194,7 +194,7 @@ describe('Converter', function () {
     });
     it('should be extremely robust. It should not loose any jobs even if the office or python thread crash randomly', function (done) {
       converter.init({factories : 4, startFactory : true, tempPath : tempPath, attempts : 10}, function (factories) {
-        var _filePath = path.resolve('./test/datasets/test_odt_render_static.odt');
+        var _filePath = path.resolve('./cli-test/datasets/test_odt_render_static.odt');
         var _nbExecuted = 100;
         var _crashModulo = 28;
         var _results = [];
@@ -239,7 +239,7 @@ describe('Converter', function () {
       });
     });
     it('should not restart the conversion factory if the document is corrupted. It should return an error message', function (done) {
-      var _filePath = path.resolve('./test/datasets/test_odt_render_corrupted.odt');
+      var _filePath = path.resolve('./cli-test/datasets/test_odt_render_corrupted.odt');
       converter.init({factories : 1, startFactory : true, tempPath : tempPath}, function (factories) {
         var _officePID = factories['0'].pid;
         var _outputPath = path.join(tempPath, 'output241.pdf');
@@ -251,7 +251,7 @@ describe('Converter', function () {
       });
     });
     it('should not restart the conversion factory if the document can be opened, but cannot be converted', function (done) {
-      var _filePath = path.resolve('./test/datasets/test_spreadsheet.ods');
+      var _filePath = path.resolve('./cli-test/datasets/test_spreadsheet.ods');
       converter.init({factories : 1, startFactory : true, tempPath : tempPath}, function (factories) {
         var _officePID = factories['0'].pid;
         var _outputPath = path.join(tempPath, 'output241.pdf');
@@ -263,7 +263,7 @@ describe('Converter', function () {
       });
     });
     it('should still restart the conversion factory if the document could not be opened more than 10 times', function (done) {
-      var _filePath = path.resolve('./test/datasets/test_odt_render_corrupted.odt');
+      var _filePath = path.resolve('./cli-test/datasets/test_odt_render_corrupted.odt');
       var _nbAttemptMax = 10;
       var _nbAttempt = _nbAttemptMax;
       converter.init({factories : 1, startFactory : true, tempPath : tempPath, attempts : 1}, function (factories) {
@@ -280,7 +280,7 @@ describe('Converter', function () {
               converter.convertFile(_filePath, 'writer_pdf_Export', '', _outputPath, function (err) {
                 assert.equal(/Could/.test(err), true);
                 assert.notEqual(factories['0'].pid, _officePID);
-                _filePath = path.resolve('./test/datasets/test_odt_render_static.odt');
+                _filePath = path.resolve('./cli-test/datasets/test_odt_render_static.odt');
                 _outputPath = path.join(tempPath, 'output284.pdf');
                 converter.convertFile(_filePath, 'writer_pdf_Export', '', _outputPath, function (err, resultPath) {
                   assert.equal(err, null);
@@ -297,8 +297,8 @@ describe('Converter', function () {
     it('should not restart the conversion factory if there is at least one success between 10 fails\
       it should not crash if formatOption is undefined', function (done) {
       var _filePath = '';
-      var _filePathKO = path.resolve('./test/datasets/test_odt_render_corrupted.odt');
-      var _filePathOK = path.resolve('./test/datasets/test_odt_render_static.odt');
+      var _filePathKO = path.resolve('./cli-test/datasets/test_odt_render_corrupted.odt');
+      var _filePathOK = path.resolve('./cli-test/datasets/test_odt_render_static.odt');
       var _nbAttemptMax = 15;
       var _nbAttempt = _nbAttemptMax;
       converter.init({factories : 1, startFactory : true, tempPath : tempPath, attempts : 1}, function (factories) {
@@ -329,7 +329,7 @@ describe('Converter', function () {
     const nbConversionBoundary       = 5; // below it os ok, above it restarts LO
     const nbConversionForRestart     = nbConversionBoundary + 1;
     const nbConversionWithoutRestart = nbConversionBoundary - 1;
-    // adapt factoryMemoryFileSize according to the system memory to make the test machine-independant
+    // adapt factoryMemoryFileSize according to the system memory to make the cli-test machine-independant
     const factoryMemoryFileSize      = totatMemoryAvailableMB * factoryMemoryThreshold / (nbConversionBoundary * 100);
     const memoryOptions = {
       factories              : 1,
@@ -345,7 +345,7 @@ describe('Converter', function () {
     });
 
     it('should not reach the memory threshold and the factory process shouldn\'t be killed', function (done) {
-      var _filePath = path.resolve('./test/datasets/test_odt_render_static.odt');
+      var _filePath = path.resolve('./cli-test/datasets/test_odt_render_static.odt');
       converter.init(memoryOptions, function (factories) {
         const _officePID = factories['0'].pid;
         for (let i = 0; i <= nbConversionWithoutRestart; i++) {
@@ -364,7 +364,7 @@ describe('Converter', function () {
     });
 
     it('should reach the memory threshold  and the factory process should be killed', function (done) {
-      var _filePath = path.resolve('./test/datasets/test_odt_render_static.odt');
+      var _filePath = path.resolve('./cli-test/datasets/test_odt_render_static.odt');
       converter.init(memoryOptions, function (factories) {
         const _officePID = factories['0'].pid;
         for (let i = 0; i <= nbConversionForRestart; i++) {
@@ -383,7 +383,7 @@ describe('Converter', function () {
     });
 
     it('should reach the memory threshold and 4 factories should be killed', function (done) {
-      var _filePath = path.resolve('./test/datasets/test_odt_render_static.odt');
+      var _filePath = path.resolve('./cli-test/datasets/test_odt_render_static.odt');
       memoryOptions.factories = 4;
       converter.init(memoryOptions, function (factories) {
         const _officePIDs = [factories['0'].pid, factories['1'].pid, factories['2'].pid, factories['3'].pid];
@@ -406,7 +406,7 @@ describe('Converter', function () {
     });
 
     it('should not timeout and should not kill the factory process. (timeout disabled)', function (done) {
-      var _filePath = path.resolve('./test/datasets/test_odt_render_static.odt');
+      var _filePath = path.resolve('./cli-test/datasets/test_odt_render_static.odt');
       memoryOptions.converterFactoryTimeout = 0;
       converter.init(memoryOptions, function (factories) {
         const _officePID = factories['0'].pid;
@@ -422,7 +422,7 @@ describe('Converter', function () {
     });
 
     it('should timeout if the report is too long to convert, return an error and should be able to convert again after', function (done) {
-      var _filePath = path.resolve('./test/datasets/test_odt_render_static.odt');
+      var _filePath = path.resolve('./cli-test/datasets/test_odt_render_static.odt');
       memoryOptions.converterFactoryTimeout = 5;
       converter.init(memoryOptions, function (factories) {
         const _officePID = factories['0'].pid;
@@ -446,7 +446,7 @@ describe('Converter', function () {
     });
 
     it('should convert one file, another with timeout, and another without timeout', function (done) {
-      var _filePath = path.resolve('./test/datasets/test_odt_render_static.odt');
+      var _filePath = path.resolve('./cli-test/datasets/test_odt_render_static.odt');
       memoryOptions.converterFactoryTimeout = 5;
       converter.init(memoryOptions, function (factories) {
         const _officePID = factories['0'].pid;

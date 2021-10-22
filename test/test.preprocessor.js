@@ -494,7 +494,7 @@ describe('preprocessor', function () {
         it('should do nothing if the tag does not contain nested <v> </v> even if the type is t="s"', function () {
           helper.assert(preprocessor.convertToInlineString('<c r="A34" s="117" t="s"><t>0</t></c>', ['<t>{d.name}</t>']), '<c r="A34" s="117" t="s"><t>0</t></c>');
         });
-        it('should makes a number marker (:formatN applied) recognised as number type by changing the type t="s" to t="n", removing xml markups and formatter ":formatN() [One marker test]" ', function () {
+        it('should makes a number marker (:formatN applied) recognised as number type by changing the type t="s" to t="n", removing xml markups and formatter ":formatN() [One marker cli-test]" ', function () {
           const _xml = '<c r="A2" s="0" t="s"><v>0</v></c>';
           const _sharedString = ['<t xml:space="preserve">{d.nbr2:formatN()}</t>'];
           const _expectedResult = '<c r="A2" s="0" t="n"><v>{d.nbr2}</v></c>';
@@ -504,7 +504,7 @@ describe('preprocessor', function () {
           helper.assert(!!/t="n"/.exec(_result), true);
         });
 
-        it('should makes a number marker (:formatN applied) recognised as number type by changing the type t="n", removing xml markups and formatter ":formatN()" [Multiple markers test]', function () {
+        it('should makes a number marker (:formatN applied) recognised as number type by changing the type t="n", removing xml markups and formatter ":formatN()" [Multiple markers cli-test]', function () {
           const _xml = '<c r="A1" s="1" t="s"><v>0</v></c><c r="A2" s="0" t="s"><v>1</v></c><c r="A3" s="0" t="s"><v>2</v></c>';
           const _sharedString = ['<t xml:space="preserve">1</t>', '<t xml:space="preserve">{d.nbr2:formatN()}</t>', '<t xml:space="preserve">{d.nbr3:formatN()}</t>'];
           const _expectedResult = '<c r="A1" s="1" t="inlineStr"><is><t xml:space="preserve">1</t></is></c><c r="A2" s="0" t="n"><v>{d.nbr2}</v></c><c r="A3" s="0" t="n"><v>{d.nbr3}</v></c>';
