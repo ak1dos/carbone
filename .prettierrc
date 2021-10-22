@@ -1,0 +1,15 @@
+{
+  "printWidth": 160,
+  "tabWidth": 2,
+  "useTabs": false, 
+  "semi": true,
+  "encoding": "utf-8", 
+  "extensions": [
+    ".js",
+    ".jsx"
+  ],
+  "singleQuote" : true,
+  "bracketSameLine": true,
+  "jsxSingleQuote": true,
+  "jsxBracketSameLine": true
+}
