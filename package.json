@@ -3,13 +3,13 @@
   "description": "Fast, Simple and Powerful report generator. Injects JSON and produces PDF, DOCX, XLSX, ODT, PPTX, ODS, ...!",
   "version": "3.2.3-1",
   "bin": {
-    "carbone": "cli/carbone-cli.js"
+    "carbone": "./lib"
   },
   "repository": {
     "type": "git",
     "url": "git+https://github.com/keeps/carbone.git"
   },
-  "main": "cli/carbone-cli.js",
+  "main": "./lib",
   "author": "Fork by KEEP SOLUTIONS of the original work of David Grelaud",
   "license": "Apache-2.0",
   "homepage": "https://carbone.io",
