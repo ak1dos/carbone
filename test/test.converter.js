@@ -87,7 +87,8 @@ describe('Converter', function () {
       var _customOptions = {
         pipeNamePrefix : '_carboneTest',
         factories      : 3,
-        startFactory   : true
+        startFactory   : true,
+        tempPath       : tempPath
       };
       converter.init(_customOptions, function (factories) {
         var _nbFactories = 0;
@@ -136,6 +137,45 @@ describe('Converter', function () {
         done();
       });
     });
+    it('should render JPG images', function (done) {
+      const _magicNumberJPG = 'ffd8ff';
+      var _filePath = path.resolve('./test/datasets/test_odt_render_static.odt');
+      var _outputPath = path.join(tempPath, 'output181.jpg');
+      converter.convertFile(_filePath, 'writer_jpg_Export', '', _outputPath, function (err, bufferSmallImagePath) {
+        var _bufferSmallImage = fs.readFileSync(bufferSmallImagePath);
+        assert.strictEqual(err, null);
+        helper.assert(_bufferSmallImage.slice(0, 3).toString('hex'), _magicNumberJPG);
+        var _outputPathBig = path.join(tempPath, 'output186.jpg');
+        done();
+      });
+    });
+
+    it('should render JPG images', function (done) {
+      const _magicNumberJPG = 'ffd8ff';
+      var _filePath = path.resolve('./test/datasets/test_odt_render_static.odt');
+      var _outputPathLow = path.join(tempPath, 'output206.jpg');
+      converter.convertFile(_filePath, 'writer_jpg_Export', '', _outputPathLow, function (err, bufferLowQualityPath) {
+        assert.strictEqual(err, null);
+        var _bufferLowQuality = fs.readFileSync(bufferLowQualityPath);
+        helper.assert(_bufferLowQuality.slice(0, 3).toString('hex'), _magicNumberJPG);
+        var _outputPathMax = path.join(tempPath, 'output212.jpg');
+        done();
+      });
+    });
+
+    it('should render a PNG image', function (done) {
+      var _magicNumberPNG = '89504e470d0a1a0a';
+      var _filePath = path.resolve('./test/datasets/test_odt_render_static.odt');
+      var _outputNotCompressed = path.join(tempPath, 'output229.png');
+      converter.convertFile(_filePath, 'writer_png_Export', '', _outputNotCompressed, function (err, bufferNotCompressed) {
+        assert.strictEqual(err, null);
+        var _bufferNotCompressed = fs.readFileSync(bufferNotCompressed);
+        helper.assert(_bufferNotCompressed.slice(0, 8).toString('hex'), _magicNumberPNG);
+        var _outputCompressed = path.join(tempPath, 'output235.png');
+        done();
+      });
+    });
+
     it('should restart automatically the conversion factory if it crashes', function (done) {
       var _filePath = path.resolve('./cli-test/datasets/test_odt_render_static.odt');
       var _outputPath = path.join(tempPath, 'output2.pdf');
@@ -187,7 +227,7 @@ describe('Converter', function () {
             var _result = fs.readFileSync(_results[i]);
             assert.equal(_result.slice(0, 4).toString(), '%PDF');
           }
-          assert.equal((_elapsed < 350), true);
+          assert.equal((_elapsed < (350 * helper.CPU_PERFORMANCE_FACTOR)), true);
           done();
         }
       });

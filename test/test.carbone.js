@@ -150,8 +150,6 @@ describe('Carbone', function () {
     it('should not crash it the wrong timezone or wrong lang is passed during rendering', function (done) {
       carbone.renderXML('<xml> {d.date:formatD(LTS)} </xml>', { date : '2014-06-01 14:00:00-04:00'}, {timezone : 'BULLSHIT'}, function (err, result) {
         helper.assert(/BULLSHIT/.test(err), true);
-        helper.assert(/RangeError/.test(err), true);
-        helper.assert(/time zone/.test(err), true);
         helper.assert(result, null);
         carbone.renderXML('<xml> {d.date:formatD(LTS)} </xml>', { date : '2014-06-01 14:00:00-04:00'}, {lang : 'BULLSHIT'}, function (err, result) {
           helper.assert(err+'', 'null');
@@ -576,6 +574,14 @@ describe('Carbone', function () {
       carbone.renderXML('{c.now}', {}, { complement : {now : 'aa'} }, function (err, result) {
         helper.assert(err+'', 'null');
         helper.assert(result, 'aa');
+        done();
+      });
+    });
+    it('should return the current timestamp in UTC with c.now even if complement is null', function (done) {
+      carbone.renderXML('{c.now}', {}, { complement : null }, function (err, result) {
+        helper.assert(err+'', 'null');
+        var _parseDate = new Date(result);
+        helper.assert(((Date.now()/1000) - _parseDate.getTime()) < 1, true) ;
         done();
       });
     });
@@ -1355,6 +1361,103 @@ describe('Carbone', function () {
                 });
               });
             });
+          });
+        });
+      });
+
+      describe('Mathematical expressions', function () {
+        it('should accept mathematicals expressions, should still accept simple negative number', function (done) {
+          const _data = {
+            passed : 10,
+            failed : 2
+          };
+          const _template = '<xml>{d.passed:mul(100):div(.passed + .failed)}  {d.passed:mul(100):div(.passed):add(-13.34):add(   -  1)}</xml>';
+          const _expectedResult = '<xml>83.33333333333333  85.66</xml>';
+          carbone.renderXML(_template, _data, function (err, result) {
+            helper.assert(err+'', 'null');
+            helper.assert(result, _expectedResult);
+            done();
+          });
+        });
+        it('should still accept simple numbers and expressions', function (done) {
+          const _data = {
+            passed : 10,
+            failed : 2
+          };
+          const _template = '<xml>{d.passed:mul(100.5):div(10.34):sub(5.2):add(3.1)}  {d.passed:mul(.failed):div(.passed):sub(.failed):add(.passed)}</xml>';
+          const _expectedResult = '<xml>95.0953578336557  10</xml>';
+          carbone.renderXML(_template, _data, function (err, result) {
+            helper.assert(err+'', 'null');
+            helper.assert(result, _expectedResult);
+            done();
+          });
+        });
+        it('should accept mathematicals expression in mul, div, sub and add formatters', function (done) {
+          const _data = {
+            passed : 10,
+            failed : 2
+          };
+          const _template = '<xml>{d.passed:mul(.passed + .failed + 3)}</xml>';
+          const _expectedResult = '<xml>150</xml>';
+          carbone.renderXML(_template, _data, function (err, result) {
+            helper.assert(err+'', 'null');
+            helper.assert(result, _expectedResult);
+            done();
+          });
+        });
+        it('should accept mathematicals expression in mul, div, sub and add formatters', function (done) {
+          const _data = {
+            passed : 10,
+            failed : 2
+          };
+          const _template = '<xml>{d.passed:mul(.passed + .failed + 3):div(.passed + .failed + 2):sub(.passed - .failed - 5):add(.passed + .failed + 3.2)}</xml>';
+          const _expectedResult = '<xml>22.91428571428571</xml>';
+          carbone.renderXML(_template, _data, function (err, result) {
+            helper.assert(err+'', 'null');
+            helper.assert(result, _expectedResult);
+            done();
+          });
+        });
+        it('should accept mathematicals expressions (complex)', function (done) {
+          const _data = {
+            passed : 10,
+            failed : 2
+          };
+          const _template = '<xml>{d.passed:mul(-100):add(-.passed - .failed - 100/2)}</xml>';
+          const _expectedResult = '<xml>-1062</xml>';
+          carbone.renderXML(_template, _data, function (err, result) {
+            helper.assert(err+'', 'null');
+            helper.assert(result, _expectedResult);
+            done();
+          });
+        });
+        it('should return an error if the mathematical expressions is not correct', function (done) {
+          const _data = {
+            passed : 10,
+            failed : 2
+          };
+          const _template = '<xml>{d.passed:mul(***100**):add(/.passed):sub(*12):div(+++12)}</xml>';
+          carbone.renderXML(_template, _data, function (err, result) {
+            helper.assert(err+'', 'Error: Bad Mathematical Expression in "***100**"');
+            helper.assert(result, null);
+            carbone.renderXML('<xml>{d.passed:add(/.passed)}</xml>', _data, function (err, result) {
+              helper.assert(err+'', 'Error: Bad Mathematical Expression in "/.passed"');
+              helper.assert(result, null);
+              done();
+            });
+          });
+        });
+        it('should not crash if there is a division per zero', function (done) {
+          const _data = {
+            passed : 10,
+            failed : 2
+          };
+          const _template = '<xml>{d.passed:add(.failed/0)}</xml>';
+          const _expectedResult = '<xml>Infinity</xml>';
+          carbone.renderXML(_template, _data, function (err, result) {
+            helper.assert(err+'', 'null');
+            helper.assert(result, _expectedResult);
+            done();
           });
         });
       });
@@ -2550,12 +2653,36 @@ describe('Carbone', function () {
       var opt = {
         renderPrefix : 'prefix-'
       };
-      carbone.render('test_word_render_A.docx', data, opt, function (err, resultFilePath, reportName) {
+      carbone.render('test_word_render_A.docx', data, opt, function (err, resultFilePath, reportName, debugInfo) {
         assert.equal(err, null);
         var _filename = path.basename(resultFilePath);
         assert.strictEqual(path.dirname(resultFilePath), params.renderPath);
-        assert.strictEqual(reportName, undefined);
+        assert.strictEqual(debugInfo, null);
+        assert.strictEqual(/prefix-[A-Za-z0-9-_]{22}cmVwb3J0\.docx/.test(reportName), true);
         assert.strictEqual(/prefix-[A-Za-z0-9-_]{22}cmVwb3J0\.docx/.test(_filename), true);
+        fs.unlinkSync(resultFilePath);
+        done();
+      });
+    });
+    it('should get debug info if isDebugActive = true', function (done) {
+      var data = {
+        field1 : 'field_1',
+        field2 : 'field_2'
+      };
+      var opt = {
+        renderPrefix  : 'prefix-',
+        isDebugActive : true
+      };
+      carbone.render('test_word_render_A.docx', data, opt, function (err, resultFilePath, reportName, debugInfo) {
+        assert.equal(err, null);
+        helper.assert(debugInfo, {
+          markers : [
+            '{d.field1}',
+            '{d.field2}',
+            '{c.author1}',
+            '{c.author2}'
+          ]
+        });
         fs.unlinkSync(resultFilePath);
         done();
       });
@@ -2691,7 +2818,7 @@ describe('Carbone', function () {
           assert.equal(Buffer.isBuffer(_results[i]), true);
           assert.equal((_results[i].slice(0, 2).toString() === 'PK'), true);
         }
-        assert.equal((_elapsed < 200), true);
+        assert.equal((_elapsed < (200 * helper.CPU_PERFORMANCE_FACTOR)), true);
         done();
       }
     });
@@ -3154,7 +3281,7 @@ describe('Carbone', function () {
             assert.equal(Buffer.isBuffer(_results[i]), true);
             assert.equal(_results[i].slice(0, 4).toString(), '%PDF');
           }
-          // assert.equal((_elapsed < 200), true);
+          assert.equal((_elapsed < (200 * helper.CPU_PERFORMANCE_FACTOR)), true);
           done();
         }
       });
@@ -3342,7 +3469,6 @@ describe('Carbone', function () {
       });
     });
   });
-
 });
 
 
@@ -3350,6 +3476,9 @@ describe('Carbone', function () {
 function unzipSystem (filePath, destPath, callback) {
   var _unzippedFiles = {};
   var _unzip = spawn('unzip', ['-o', filePath, '-d', destPath]);
+  _unzip.on('error', function () {
+    throw Error('\n\nPlease install unzip program to execute tests. Ex: sudo apt install unzip\n\n');
+  });
   _unzip.stderr.on('data', function (data) {
     throw Error(data);
   });

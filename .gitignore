@@ -37,13 +37,17 @@ temp
 
 ######## project-specific
 0perso/*
+config/*
 build/*
 render/*
 template/*
 coverage/*
 asset/*
 0formation/*
+<<<<<<< HEAD
 examples/*
 out/*
 request/*
 
+=======
+>>>>>>> cf5197d1c233959e2f6930561b4bd9dec1d35095

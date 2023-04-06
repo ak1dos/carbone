@@ -1,17 +1,11 @@
 {
-  "name": "@keepsolutions/carbone",
+  "name": "carbone",
   "description": "Fast, Simple and Powerful report generator. Injects JSON and produces PDF, DOCX, XLSX, ODT, PPTX, ODS, ...!",
-  "version": "3.2.3-1",
-  "bin": {
-    "carbone": "./lib"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/keeps/carbone.git"
-  },
+  "version": "3.5.5",
+  "bin": "bin/carbone",
   "main": "./lib",
-  "author": "Fork by KEEP SOLUTIONS of the original work of David Grelaud",
-  "license": "Apache-2.0",
+  "author": "David Grelaud",
+  "license": "SEE LICENSE IN LICENSE.md",
   "homepage": "https://carbone.io",
   "keywords": [
     "report",
@@ -24,20 +18,15 @@
     "json"
   ],
   "scripts": {
-    "test": "node ./node_modules/mocha/bin/mocha test --timeout 100000 --exit",
+    "test": "./node_modules/.bin/mocha test --timeout 100000 --exit",
     "lint": "eslint ./lib/**.js ./test/**.js ./formatters/**.js",
     "lint:fix": "eslint ./lib/**.js ./test/**.js ./formatters/**.js --fix",
     "postpublish": "PACKAGE_VERSION=$(cat package.json | grep \\\"version\\\" | head -1 | awk -F: '{ print $2 }' | sed 's/[\",]//g' | tr -d '[[:space:]]') && git tag $PACKAGE_VERSION && git push origin $PACKAGE_VERSION && git push github-origin $PACKAGE_VERSION"
   },
   "dependencies": {
-    "dayjs": "=1.10.4",
-    "debug": "=4.1.1",
-    "figlet": "^1.5.0",
-    "image-size": "^0.9.3",
-    "lodash": "^4.17.21",
-    "moment": "^2.29.1",
-    "qrcode": "^1.4.4",
-    "timsort": "=0.3.0",
+    "dayjs": "=1.11.7",
+    "dayjs-timezone-iana-plugin": "=0.1.0",
+    "debug": "=4.3.4",
     "which": "=2.0.2",
     "xml2js": "^0.4.23",
     "xml2js-xpath": "^0.11.0",
@@ -47,20 +36,9 @@
     "yazl": "=2.5.1"
   },
   "devDependencies": {
-    "eslint": "=7.7.0",
-    "mocha": "=8.1.3",
-    "prettier": "^2.4.1"
+    "mocha": "=9.2.2"
   },
   "engines": {
-    "node": ">= 10.15.0"
-  },
-  "bugs": {
-    "url": "https://github.com/keeps/primeng/issues"
-  },
-  "directories": {
-    "doc": "doc",
-    "example": "examples",
-    "lib": "lib",
-    "test": "test"
+    "node": ">= 12.14.0"
   }
 }
