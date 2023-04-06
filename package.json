@@ -27,6 +27,7 @@
     "dayjs": "=1.11.7",
     "dayjs-timezone-iana-plugin": "=0.1.0",
     "debug": "=4.3.4",
+    "qrcode": "^1.5.1",
     "which": "=2.0.2",
     "xml2js": "^0.4.23",
     "xml2js-xpath": "^0.11.0",
